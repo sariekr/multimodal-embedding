@@ -71,12 +71,12 @@ def compute_metrics(scores):
     metrics = {}
     for k in [1, 5, 10]:
         if k > n: 
-            metrics[f"R@{{k}}"] = 0.0
+            metrics[f"R@{k}"] = 0.0
             continue
         correct = 0
         for i in range(n):
             if i in torch.topk(scores[i], k=k).indices.tolist(): correct += 1
-        metrics[f"R@{{k}}"] = correct/n
+        metrics[f"R@{k}"] = correct/n
     
     mrr_sum = 0
     for i in range(n):
@@ -104,8 +104,7 @@ def run_warmup(model, processor, model_info):
                 else: _ = model(**bi).image_embeds
                 if hasattr(model, 'get_text_features'): _ = model.get_text_features(**bt)
                 else: _ = model(**bt).text_embeds
-    except Exception:
-        pass
+    except Exception: pass
 
 def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name, text_col="caption", image_col="image", run_idx=0):
     print(f"    > {dataset_name} (Run {run_idx+1}/{NUM_RUNS})...")
@@ -274,7 +273,7 @@ if __name__ == "__main__":
                 try:
                     model = AutoModel.from_pretrained(m_info["id"], trust_remote_code=trust, torch_dtype=DTYPE, use_safetensors=True).to(DEVICE)
                 except:
-                    print("    Safetensors failed, fallback...")
+                    print("    Safetensors failed, attempting fallback...")
                     model = AutoModel.from_pretrained(m_info["id"], trust_remote_code=trust, torch_dtype=DTYPE).to(DEVICE)
                 processor = AutoProcessor.from_pretrained(m_info["id"], trust_remote_code=trust)
                 model.eval()
