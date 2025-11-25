@@ -279,16 +279,15 @@ if __name__ == "__main__":
         ds_flickr = load_dataset("lmms-lab/flickr30k", split="train").select(range(SAMPLE_SIZE))
         
     # 2. COCO
-    # Using a reliable Parquet-based version of COCO (Karpathy split test set or similar)
-    # 'dwb2023/coco_2014_val_5k' is a good candidate for retrieval tasks
+    # Switching to 'merve/coco2017' which is Parquet-based and safe for datasets>=3.0
     try:
-        print("Downloading COCO (dwb2023/coco_2014_val_5k)...")
-        ds_coco = load_dataset("dwb2023/coco_2014_val_5k", split="test").select(range(SAMPLE_SIZE))
-        # This dataset usually has 'image' and 'caption' columns
+        print("Downloading COCO (merve/coco2017)...")
+        ds_coco = load_dataset("merve/coco2017", split="validation").select(range(SAMPLE_SIZE))
+        # This dataset has 'image' and 'captions' (list of strings) columns
+        # We need to map 'captions' -> 'caption' for uniformity or handle it in the loop
     except Exception as e:
-        print(f"Primary COCO load failed: {e}. Trying backup...")
-        # Backup: generic coco 2017 val
-        ds_coco = load_dataset("HuggingFaceM4/COCO", split="validation", trust_remote_code=True).select(range(SAMPLE_SIZE)) # Keep trust for M4 if needed, but might fail
+        print(f"COCO load failed: {e}. Skipping COCO.")
+        ds_coco = None # Skip if fails
     
     # 3. DocVQA
     ds_docvqa = load_dataset("HuggingFaceM4/DocVQA", split="test").select(range(SAMPLE_SIZE))
@@ -313,11 +312,15 @@ if __name__ == "__main__":
         res.update(run_retrieval_benchmark(model, processor, m_info, ds_flickr, "Flickr"))
         
         # COCO
-        # Need to ensure column names. 
-        # If nlphuji: 'caption' (list)
-        # If M4: 'sentences_raw'
-        coco_text_col = "caption" if "caption" in ds_coco.features else "sentences_raw"
-        res.update(run_retrieval_benchmark(model, processor, m_info, ds_coco, "COCO", text_col=coco_text_col))
+        if ds_coco is not None:
+            # Determine text column: 'captions' (merve), 'caption' (standard), or 'sentences_raw' (legacy)
+            if "captions" in ds_coco.features: coco_text_col = "captions"
+            elif "caption" in ds_coco.features: coco_text_col = "caption"
+            else: coco_text_col = "sentences_raw"
+            
+            res.update(run_retrieval_benchmark(model, processor, m_info, ds_coco, "COCO", text_col=coco_text_col))
+        else:
+            res.update({"COCO R@1": "N/A", "COCO R@5": "N/A"})
         
         # DocVQA (Image <-> Question)
         res.update(run_retrieval_benchmark(model, processor, m_info, ds_docvqa, "DocVQA", text_col="question"))
