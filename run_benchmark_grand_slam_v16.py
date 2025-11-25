@@ -9,12 +9,13 @@ import pandas as pd
 from datasets import load_dataset
 from transformers import AutoModel, AutoProcessor, SiglipModel, SiglipProcessor
 
-# --- CONFIGURATION ---
-NUM_RUNS = 3  # Increased for statistical significance
-SAMPLE_SIZE = 1000
-SEED_BASE = 42
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-DTYPE = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16 
+# --- REPRODUCIBILITY ---
+SEED = 42
+torch.manual_seed(SEED)
+np.random.seed(SEED)
+random.seed(SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(SEED)
 
 # --- COLPALI CHECK ---
 try:
@@ -24,19 +25,39 @@ except ImportError:
     COLPALI_AVAILABLE = False
     print("UYARI: ColPali engine bulunamadı.")
 
+# --- AYARLAR ---
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DTYPE = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+SAMPLE_SIZE = 1000
+
 print(f"Running on: {DEVICE}")
 print(f"Precision: {DTYPE}")
 print(f"Sample Size: {SAMPLE_SIZE}")
-print(f"Runs per Model: {NUM_RUNS}")
 
-# --- MODEL LIST ---
+# --- MODEL LİSTESİ (THE FINAL 8) ---
 MODELS_TO_TEST = [
-    {"name": "ColPali-v1.3",  "id": "vidore/colpali-v1.3", "type": "colpali", "batch_size": 4}, 
+    # 1. ColPali (Document King)
+    {"name": "ColPali-v1.3",  "id": "vidore/colpali-v1.3", "type": "colpali", "batch_size": 4},
+
+    # 2. SigLIP 400M (Standard)
     {"name": "SigLIP-400M",   "id": "google/siglip-so400m-patch14-384", "type": "siglip", "batch_size": 64},
+
+    # 3. SigLIP Base (Stable Replacement for Large)
+    {"name": "SigLIP-Base",   "id": "google/siglip-base-patch16-224", "type": "siglip", "batch_size": 64},
+
+    # 4. LAION Huge (The Classic)
     {"name": "LAION-CLIP-H",  "id": "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", "type": "dense", "batch_size": 32},
+
+    # 5. OpenAI CLIP
     {"name": "OpenAI-CLIP-L", "id": "openai/clip-vit-large-patch14-336", "type": "dense", "batch_size": 32},
-    {"name": "Jina-CLIP-v1",  "id": "jinaai/jina-clip-v1", "type": "dense", "trust": True, "batch_size": 32},
+
+    # 6. Jina CLIP
+    {"name": "Jina-CLIP-v1", "id": "jinaai/jina-clip-v1", "type": "dense", "trust": True, "batch_size": 32},
+
+    # 7. Apple DFN5B
     {"name": "Apple-DFN5B-H", "id": "apple/DFN5B-CLIP-ViT-H-14-378", "type": "dense", "trust": True, "batch_size": 32},
+
+    # 8. MetaCLIP Huge (The Challenger)
     {"name": "MetaCLIP-H14",  "id": "facebook/metaclip-h14-fullcc2.5b", "type": "dense", "trust": True, "batch_size": 16}
 ]
 
@@ -46,21 +67,12 @@ def clean_memory():
     torch.cuda.empty_cache()
     gc.collect()
 
-def set_seed(seed):
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-
-def safe_get_text(item, col_name, dataset_name="", run_seed=0):
+def safe_get_text(item, col_name, dataset_name=""):
     val = item.get(col_name, "")
-    if isinstance(val, list): 
+    if isinstance(val, list):
         if len(val) == 0: return ""
-        # Standardize: Always take the first caption to ensure strict reproducibility across frameworks
-        # Random choice introduced variance. First caption is standard practice.
+        if dataset_name == "COCO": return str(random.choice(val))
         return str(val[0])
-        
     if isinstance(val, dict):
         for key in ['en', 'text', 'caption', 'query']:
             if key in val: return str(val[key])
@@ -71,62 +83,34 @@ def compute_metrics(scores):
     n = scores.size(0)
     metrics = {}
     for k in [1, 5, 10]:
-        if k > n: 
-            metrics[f"R@{k}"] = 0.0
+        if k > n:
+            metrics[f"R@{k}"] = "N/A"
             continue
         correct = 0
         for i in range(n):
             if i in torch.topk(scores[i], k=k).indices.tolist(): correct += 1
-        metrics[f"R@{k}"] = correct/n
-    
+        metrics[f"R@{k}"] = f"{correct/n:.1%}"
     mrr_sum = 0
     for i in range(n):
         rank = (scores[i].argsort(descending=True) == i).nonzero(as_tuple=True)[0].item() + 1
         mrr_sum += 1.0 / rank
-    metrics["MRR"] = mrr_sum/n
+    metrics["MRR"] = f"{mrr_sum/n:.3f}"
     return metrics
 
-def run_warmup(model, processor, model_info):
-    """Runs a dummy batch to warm up CUDA kernels."""
-    # Create dummy data
-    dummy_img = torch.zeros((1, 3, 224, 224), dtype=torch.uint8) # Size doesn't matter much for init
-    dummy_txt = ["warmup"]
-    try:
-        # Just create PIL image for processor compatibility
-        from PIL import Image
-        dummy_pil = Image.new('RGB', (224, 224))
-        
-        with torch.no_grad():
-            if model_info["type"] == "colpali":
-                bi = processor.process_images([dummy_pil]).to(DEVICE)
-                bq = processor.process_queries(dummy_txt).to(DEVICE)
-                _ = model(**bi)
-                _ = model(**bq)
-            else:
-                bi = processor(images=[dummy_pil], return_tensors="pt").to(DEVICE)
-                bt = processor(text=dummy_txt, return_tensors="pt", padding=True).to(DEVICE)
-                if hasattr(model, 'get_image_features'): _ = model.get_image_features(**bi)
-                else: _ = model(**bi).image_embeds
-                if hasattr(model, 'get_text_features'): _ = model.get_text_features(**bt)
-                else: _ = model(**bt).text_embeds
-    except Exception:
-        pass # Warmup failure shouldn't stop benchmark, just affect first run timing
-
-def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name, text_col="caption", image_col="image", run_idx=0):
-    print(f"    > {dataset_name} (Run {run_idx+1}/{NUM_RUNS})...")
+def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name, text_col="caption", image_col="image"):
+    print(f"  > Benchmarking {dataset_name} (N={len(dataset)})...")
     bs = model_info.get("batch_size", 32)
-    
+
     try:
         images = [item[image_col].convert("RGB") for item in dataset]
         queries = [safe_get_text(item, text_col, dataset_name) for item in dataset]
     except Exception as e:
-        print(f"      Data Prep Error: {e}")
-        return None
+        print(f"    Data Prep Error: {e}")
+        return {f"{dataset_name} Status": "Error"}
 
     t_start = time.time()
     try:
         with torch.no_grad():
-            # --- IMAGE EMBEDDINGS ---
             img_embeds_list = []
             for i in range(0, len(images), bs):
                 batch_imgs = images[i : i+bs]
@@ -140,11 +124,10 @@ def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name,
                     else: out = model(**inputs).image_embeds
                     if out.dim() == 3: out = out[:, 0, :]
                     out = out / out.norm(dim=-1, keepdim=True)
-                    img_embeds_list.append(out.to(DTYPE).cpu()) 
+                    img_embeds_list.append(out.to(DTYPE).cpu())
                 del inputs, out
                 torch.cuda.empty_cache()
 
-            # --- TEXT EMBEDDINGS ---
             txt_embeds_list = []
             for i in range(0, len(queries), bs):
                 batch_txt = queries[i : i+bs]
@@ -162,7 +145,6 @@ def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name,
                 del inputs, out
                 torch.cuda.empty_cache()
 
-            # --- SCORING ---
             if model_info["type"] == "colpali":
                 score_bs = 10
                 all_scores = []
@@ -179,7 +161,7 @@ def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name,
                     all_scores.append(torch.cat(batch_scores, dim=1))
                     del q_batch
                     torch.cuda.empty_cache()
-                scores = torch.cat(all_scores, dim=0) 
+                scores = torch.cat(all_scores, dim=0)
             else:
                 all_img = torch.cat(img_embeds_list, dim=0).to(DTYPE)
                 all_txt = torch.cat(txt_embeds_list, dim=0).to(DTYPE)
@@ -187,23 +169,35 @@ def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name,
 
         t_end = time.time()
         inference_time = t_end - t_start
+        throughput = len(queries) / inference_time
         scores = scores.float()
         metrics = compute_metrics(scores)
-        metrics["Time"] = inference_time
-        return metrics
+        metrics["Time"] = f"{inference_time:.1f}s"
+        metrics["QPS"] = f"{throughput:.1f}"
+
+        if model_info["type"] == "colpali":
+            avg_tokens = sum(e.shape[0] for e in img_embeds_list) / len(img_embeds_list)
+            metrics["Embed"] = f"~{int(avg_tokens)}tok"
+        else:
+            dim = all_img.shape[1]
+            metrics["Embed"] = f"{dim}d"
+
+        final_metrics = {}
+        for k, v in metrics.items():
+            final_metrics[f"{dataset_name} {k}"] = v
+        return final_metrics
 
     except Exception as e:
-        print(f"      Inference Error: {e}")
-        return None
+        print(f"Inference Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {f"{dataset_name} R@1": "Error", f"{dataset_name} R@5": "Error"}
 
 def run_winoground_full(model, processor, model_info):
-    # Winoground is small/deterministic enough that multiple runs might be redundant if no shuffling,
-    # but we will run it to be consistent.
-    print("    > Winoground...")
-    try:
-        dataset = load_dataset("facebook/winoground", split="test", trust_remote_code=True)
-    except: return None
-    
+    print("  > Benchmarking Winoground (Full Metrics)...")
+    try: dataset = load_dataset("facebook/winoground", split="test", trust_remote_code=True)
+    except: return {"Wino Group": "N/A"}
+
     text_score, image_score, group_score, total = 0, 0, 0, len(dataset)
     try:
         for example in dataset:
@@ -230,49 +224,26 @@ def run_winoground_full(model, processor, model_info):
             if (s[0,0] > s[1,0] and s[1,1] > s[0,1]): text_score += 1
             if (s[0,0] > s[0,1] and s[1,1] > s[1,0]): image_score += 1
             if (s[0,0] > s[1,0] and s[1,1] > s[0,1]) and (s[0,0] > s[0,1] and s[1,1] > s[1,0]): group_score += 1
-        
-        return {
-            "Wino Group": group_score/total
-        }
-    except Exception as e: return None
+        return {"Wino Text": f"{text_score/total:.1%}", "Wino Image": f"{image_score/total:.1%}", "Wino Group": f"{group_score/total:.1%}"}
+    except Exception as e: return {"Wino Group": "Error"}
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print(">>> LOADING DATASETS (PRE-LOAD)")
-    
-    # Pre-load all datasets to avoid download noise during runs
-    try: 
-        # Flickr: Use test split
-        raw_flickr = load_dataset("lmms-lab/flickr30k", split="test", trust_remote_code=True)
-        print(f"Flickr loaded: {len(raw_flickr)} samples")
-    except Exception as e:
-        print(f"Flickr failed: {e}")
-        raw_flickr = None
+    print(">>> LOADING DATASETS...")
+    try: ds_flickr = load_dataset("lmms-lab/flickr30k", split="test", trust_remote_code=True).select(range(SAMPLE_SIZE))
+    except: ds_flickr = []
+    try:
+        # CHANGED: Using official DocVQA dataset from lmms-lab
+        ds_doc = load_dataset("lmms-lab/DocVQA", "DocVQA", split="train", trust_remote_code=True).select(range(SAMPLE_SIZE))
+    except: ds_doc = []
+    try: ds_coco = load_dataset("merve/coco2017", split="validation").select(range(SAMPLE_SIZE))
+    except: ds_coco = []
 
-    try: 
-        # DocVQA: Use test split
-        raw_docvqa = load_dataset("nielsr/docvqa_1200_examples", split="test")
-        print(f"DocVQA loaded: {len(raw_docvqa)} samples")
-    except Exception as e:
-        print(f"DocVQA failed: {e}")
-        raw_docvqa = None
-
-    try: 
-        # COCO: Use validation split
-        raw_coco = load_dataset("merve/coco2017", split="validation")
-        print(f"COCO loaded: {len(raw_coco)} samples")
-    except Exception as e:
-        print(f"COCO failed: {e}")
-        raw_coco = None
-
-    final_agg_results = []
-
+    results = []
     for m_info in MODELS_TO_TEST:
         m_name = m_info["name"]
         print(f"\n>>> TESTING: {m_name}")
         clean_memory()
-        
-        # Initialize Model
         try:
             trust = m_info.get("trust", False)
             if m_info["type"] == "colpali":
@@ -286,91 +257,58 @@ if __name__ == "__main__":
                 try:
                     model = AutoModel.from_pretrained(m_info["id"], trust_remote_code=trust, torch_dtype=DTYPE, use_safetensors=True).to(DEVICE)
                 except:
-                    print("    Safetensors failed, fallback...")
+                    print("    Safetensors failed, attempting fallback...")
                     model = AutoModel.from_pretrained(m_info["id"], trust_remote_code=trust, torch_dtype=DTYPE).to(DEVICE)
                 processor = AutoProcessor.from_pretrained(m_info["id"], trust_remote_code=trust)
                 model.eval()
-            
-            # Warmup
-            print("    Warming up...")
-            run_warmup(model, processor, m_info)
-            
         except Exception as e:
             print(f"Load Error for {m_name}: {e}")
+            results.append({"Model": m_name, "Flickr R@1": "Load Error"})
             continue
 
-        # Run Iterations
-        model_runs = {"Flickr": [], "DocVQA": [], "COCO": [], "Winoground": []}
-        
-        for run_idx in range(NUM_RUNS):
-            current_seed = SEED_BASE + run_idx
-            set_seed(current_seed)
-            
-            # 1. Flickr (Shuffle and Select)
-            if raw_flickr:
-                ds = raw_flickr.shuffle(seed=current_seed).select(range(SAMPLE_SIZE))
-                res = run_retrieval_benchmark(model, processor, m_info, ds, "Flickr", "caption", "image", run_idx)
-                if res: model_runs["Flickr"].append(res)
+        row = {"Model": m_name}
+        if len(ds_flickr) > 0: row.update(run_retrieval_benchmark(model, processor, m_info, ds_flickr, "Flickr", "caption"))
+        if len(ds_coco) > 0: row.update(run_retrieval_benchmark(model, processor, m_info, ds_coco, "COCO", "captions"))
+        if len(ds_doc) > 0: row.update(run_retrieval_benchmark(model, processor, m_info, ds_doc, "DocVQA", "query"))
+        row.update(run_winoground_full(model, processor, m_info))
+        results.append(row)
+        print(f"Result: {row}")
 
-            # 2. COCO (Shuffle and Select)
-            if raw_coco:
-                ds = raw_coco.shuffle(seed=current_seed).select(range(SAMPLE_SIZE))
-                # COCO col is 'captions'
-                res = run_retrieval_benchmark(model, processor, m_info, ds, "COCO", "captions", "image", run_idx)
-                if res: model_runs["COCO"].append(res)
+    print("\n" + "="*150)
+    print("GRAND SLAM BENCHMARK RESULTS (V16 - Enhanced Metrics)")
+    print("="*150)
 
-            # 3. DocVQA (Shuffle and Select - Note: dataset is small ~1200, so Sample Size 1000 takes almost all)
-            if raw_docvqa:
-                # If dataset smaller than sample size, take all
-                n_take = min(SAMPLE_SIZE, len(raw_docvqa))
-                ds = raw_docvqa.shuffle(seed=current_seed).select(range(n_take))
-                res = run_retrieval_benchmark(model, processor, m_info, ds, "DocVQA", "query", "image", run_idx)
-                if res: model_runs["DocVQA"].append(res)
-            
-            # 4. Winoground (Full set always used, but run loop keeps consistency)
-            wino_res = run_winoground_full(model, processor, m_info)
-            if wino_res: model_runs["Winoground"].append(wino_res)
+    if len(results) > 0:
+        df = pd.DataFrame(results)
 
-        # Aggregate Results
-        agg_row = {"Model": m_name}
-        
-        for dataset_name, runs in model_runs.items():
-            if not runs: continue
-            
-            # Extract keys
-            metric_keys = runs[0].keys()
-            
-            for k in metric_keys:
-                values = [r[k] for r in runs]
-                mean = np.mean(values)
-                std = np.std(values)
-                
-                if "Time" in k:
-                    agg_row[f"{dataset_name} Time"] = f"{mean:.2f}s"
-                elif "R@" in k or "MRR" in k or "Group" in k:
-                    # Format as Mean ± Std
-                    # R@ is %, MRR is float
-                    if "MRR" in k:
-                        agg_row[f"{dataset_name} {k}"] = f"{mean:.3f} ± {std:.3f}"
-                    else:
-                        agg_row[f"{dataset_name} {k}"] = f"{mean:.1%} ± {std:.1%}"
-                        
-        final_agg_results.append(agg_row)
-        print(f"Completed {m_name}")
+        # TABLE 1: ACCURACY METRICS
+        print("\n📊 ACCURACY METRICS")
+        print("-" * 150)
+        accuracy_cols = ["Model",
+                        "Flickr R@1", "Flickr R@5", "Flickr R@10", "Flickr MRR",
+                        "COCO R@1", "COCO R@5", "COCO R@10", "COCO MRR",
+                        "DocVQA R@1", "DocVQA R@5", "DocVQA R@10", "DocVQA MRR",
+                        "Wino Group"]
+        accuracy_cols = [c for c in accuracy_cols if c in df.columns]
+        print(df[accuracy_cols].to_markdown(index=False))
 
-    print("\n" + "="*120)
-    print("GRAND SLAM BENCHMARK RESULTS (V16 - ACADEMIC STANDARD)")
-    print("="*120)
-    
-    df = pd.DataFrame(final_agg_results)
-    # Reorder nicely
-    cols = ["Model"]
-    for ds in ["Flickr", "COCO", "DocVQA"]:
-        cols.extend([f"{ds} R@1", f"{ds} R@5", f"{ds} Time"])
-    cols.append("Winoground Wino Group")
-    
-    # Filter existing columns
-    final_cols = [c for c in cols if c in df.columns]
-    
-    print(df[final_cols].to_markdown(index=False))
-    df.to_csv("benchmark_v16_academic_results.csv", index=False)
+        # TABLE 2: PERFORMANCE METRICS
+        print("\n\n⚡ PERFORMANCE METRICS")
+        print("-" * 150)
+        perf_cols = ["Model",
+                    "Flickr Time", "Flickr QPS", "Flickr Embed",
+                    "COCO Time", "COCO QPS", "COCO Embed",
+                    "DocVQA Time", "DocVQA QPS", "DocVQA Embed"]
+        perf_cols = [c for c in perf_cols if c in df.columns]
+        print(df[perf_cols].to_markdown(index=False))
+
+        # TABLE 3: WINOGROUND DETAILS (if available)
+        if "Wino Text" in df.columns and "Wino Image" in df.columns:
+            print("\n\n🎯 WINOGROUND DETAILED SCORES")
+            print("-" * 150)
+            wino_cols = ["Model", "Wino Text", "Wino Image", "Wino Group"]
+            print(df[wino_cols].to_markdown(index=False))
+
+        # Save full results
+        df.to_csv("benchmark_v16_results.csv", index=False)
+        print(f"\n✅ Full results saved to: benchmark_v16_results.csv")
