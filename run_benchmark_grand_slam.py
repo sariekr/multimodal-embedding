@@ -279,15 +279,16 @@ if __name__ == "__main__":
         ds_flickr = load_dataset("lmms-lab/flickr30k", split="train").select(range(SAMPLE_SIZE))
         
     # 2. COCO
-    # COCO structure is complex. Using a simplified loader or taking care.
-    # 'HuggingFaceM4/COCO' or 'bcdavidli/coco_captions'
+    # Using a reliable Parquet-based version of COCO (Karpathy split test set or similar)
+    # 'dwb2023/coco_2014_val_5k' is a good candidate for retrieval tasks
     try:
-        ds_coco = load_dataset("HuggingFaceM4/COCO", split="test", trust_remote_code=True).select(range(SAMPLE_SIZE))
-        # COCO often has list of sentences. normalize.
-        # Mapping: 'image', 'sentences_raw' -> list of strings
-    except:
-        # Fallback to a simpler one if M4 fails or is huge
-        ds_coco = load_dataset("nlphuji/mscoco_2014_5k_test_image_text_retrieval", split="test").select(range(SAMPLE_SIZE))
+        print("Downloading COCO (dwb2023/coco_2014_val_5k)...")
+        ds_coco = load_dataset("dwb2023/coco_2014_val_5k", split="test").select(range(SAMPLE_SIZE))
+        # This dataset usually has 'image' and 'caption' columns
+    except Exception as e:
+        print(f"Primary COCO load failed: {e}. Trying backup...")
+        # Backup: generic coco 2017 val
+        ds_coco = load_dataset("HuggingFaceM4/COCO", split="validation", trust_remote_code=True).select(range(SAMPLE_SIZE)) # Keep trust for M4 if needed, but might fail
     
     # 3. DocVQA
     ds_docvqa = load_dataset("HuggingFaceM4/DocVQA", split="test").select(range(SAMPLE_SIZE))
