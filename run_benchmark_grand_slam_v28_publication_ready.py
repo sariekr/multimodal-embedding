@@ -58,14 +58,24 @@ def parse_args():
     parser.add_argument("--cache-dir", type=str, default="./coco_images", help="Image cache directory")
     return parser.parse_args()
 
-ARGS = parse_args()
+# --- LAZY GLOBALS (initialized in main to avoid multiprocessing re-execution) ---
+ARGS = None
+DEVICE = None
+DTYPE = None
+CACHE_DIR = None
+
+def init_globals():
+    """Initialize globals - call ONLY from main process"""
+    global ARGS, DEVICE, DTYPE, CACHE_DIR
+    ARGS = parse_args()
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    DTYPE = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    CACHE_DIR = Path(ARGS.cache_dir)
+    CACHE_DIR.mkdir(exist_ok=True)
+    logger.info(f"Initialized: DEVICE={DEVICE}, DTYPE={DTYPE}, CACHE_DIR={CACHE_DIR}")
 
 # --- CONFIG ---
 SEED = 42
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-DTYPE = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-CACHE_DIR = Path(ARGS.cache_dir)
-CACHE_DIR.mkdir(exist_ok=True)
 
 # --- EXPECTED RESULTS (COCO 5K Reference - T2I R@1) ---
 # Source: Empirical estimates based on various papers/reproductions for 5K Karpathy test split
@@ -447,11 +457,26 @@ def run_winoground(model: Union[PreTrainedModel, Any],
 
 # --- MAIN ---
 if __name__ == "__main__":
+    # Multiprocessing safety for datasets library
+    import multiprocessing
+    try:
+        multiprocessing.set_start_method('spawn', force=True)
+    except RuntimeError:
+        pass  # Already set
+
+    # Initialize globals (prevents re-execution by worker processes)
+    init_globals()
+
     logger.info(f"BENCHMARK START (V28) - Output: {ARGS.output}")
     
+    # Disable datasets multiprocessing to prevent worker import loops
+    import datasets
+    datasets.disable_progress_bar()
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
     # 0. Load Full COCO Dataset (Once)
     logger.info("LOADING COCO-KARPATHY TEST SET...")
-    ds_full_raw = load_dataset("yerevann/coco-karpathy", split="test")
+    ds_full_raw = load_dataset("yerevann/coco-karpathy", split="test", num_proc=1)
     logger.info(f"Raw Dataset Size: {len(ds_full_raw)}")
     
     # 1. Pre-filter dataset for images that can be loaded and have enough captions
