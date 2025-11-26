@@ -43,7 +43,22 @@ python test_flickr_splits.py
 
 ## 🔄 Güncel Çalıştırma (Repo Var)
 
-### 🛡️ V26 (Fixed & Validated) - THE ONLY VERSION TO USE
+### 🚀 V27 (Optimized & Polished) - THE NEW GOLD STANDARD
+
+**✅ OPTIMIZED & BUG-FREE:**
+- **Fixed Caption Bug:** Checks caption count *before* processing images (no orphaned images).
+- **Faster:** Loads model only *once* per architecture (saves time).
+- **Proper Warm-up:** Ensures accurate timing by running forward pass.
+- **Safe:** CUDA sync guarded for CPU compatibility.
+
+```bash
+cd /workspace/multimodal-embedding
+git pull origin main
+# Run the optimized benchmark (3 runs recommended)
+python run_benchmark_grand_slam_v27_optimized.py --runs 3
+```
+
+### ⚠️ V26 (Deprecated - Caption Bug)
 
 **✅ CRITICAL BUG FIXES:**
 - **Fixed Seed Bug:** V25 crashed due to undefined SEED. Fixed in V26.
