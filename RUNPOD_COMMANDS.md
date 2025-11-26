@@ -43,7 +43,22 @@ python test_flickr_splits.py
 
 ## 🔄 Güncel Çalıştırma (Repo Var)
 
-### 🔬 V25 (Scientific Standard) - RECOMMENDED
+### 🛡️ V26 (Fixed & Validated) - THE ONLY VERSION TO USE
+
+**✅ CRITICAL BUG FIXES:**
+- **Fixed Seed Bug:** V25 crashed due to undefined SEED. Fixed in V26.
+- **Fixed Indices Logic:** Prevents data misalignment during shuffling.
+- **Validation:** Warns if results are outside expected scientific ranges.
+- **Optimization:** Runs Winoground only once (saving 3x compute).
+
+```bash
+cd /workspace/multimodal-embedding
+git pull origin main
+# Run the bug-free benchmark (3 runs recommended)
+python run_benchmark_grand_slam_v26_fixed.py --runs 3
+```
+
+### ⚠️ V25 (Deprecated - Crashes)
 
 **✅ Statistically Rigorous & Correct:**
 - **Statistical Significance:** Runs 3 iterations (default) and reports `Mean ± Std Dev`.
