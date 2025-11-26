@@ -184,7 +184,7 @@ def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name,
 
             # COMPUTE SIMILARITY SCORES
             if model_info["type"] == "colpali":
-                # ColPali scoring (multi-vector)
+                # ColPali scoring (multi-vector) - TEXT-TO-IMAGE
                 score_bs = 10
                 all_scores_t2i = []
                 for i in range(0, len(txt_embeds_list), score_bs):
@@ -201,7 +201,23 @@ def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name,
                     del q_batch
                     torch.cuda.empty_cache()
                 scores_t2i = torch.cat(all_scores_t2i, dim=0)
-                scores_i2t = scores_t2i.t()  # Transpose for I2T
+
+                # ColPali scoring - IMAGE-TO-TEXT (use images as queries)
+                all_scores_i2t = []
+                for i in range(0, len(img_embeds_list), score_bs):
+                    img_q_batch = [img.to(DEVICE) for img in img_embeds_list[i : i+score_bs]]
+                    batch_scores = []
+                    txt_chunk = 20
+                    for j in range(0, len(txt_embeds_list), txt_chunk):
+                        t_batch = [t.to(DEVICE) for t in txt_embeds_list[j : j+txt_chunk]]
+                        s = processor.score(img_q_batch, t_batch)
+                        batch_scores.append(s.cpu())
+                        del t_batch, s
+                        torch.cuda.empty_cache()
+                    all_scores_i2t.append(torch.cat(batch_scores, dim=1))
+                    del img_q_batch
+                    torch.cuda.empty_cache()
+                scores_i2t = torch.cat(all_scores_i2t, dim=0)
             else:
                 # Dense model scoring
                 all_img = torch.cat(img_embeds_list, dim=0).to(DTYPE)
