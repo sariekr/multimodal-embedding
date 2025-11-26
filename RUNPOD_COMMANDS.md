@@ -43,7 +43,25 @@ python test_flickr_splits.py
 
 ## 🔄 Güncel Çalıştırma (Repo Var)
 
-### 🏆 V23 (Final Robust Version) - RECOMMENDED
+### 🚀 V24 (Professional Production Ready) - STANDARD
+
+**✅ Production Grade Features:**
+- **Checkpointing:** Saves results to CSV *instantly* after each model (resilient to crashes).
+- **Logging:** Detailed logs to `benchmark_v24.log`.
+- **Configurable:** Supports CLI arguments.
+- **Correctness:** Uses standard efficient scoring.
+
+```bash
+cd /workspace/multimodal-embedding
+git pull origin main
+# Run with defaults (Batch=32, Workers=16, Full 5K)
+python run_benchmark_grand_slam_v24_professional.py
+
+# Optional: Custom settings
+# python run_benchmark_grand_slam_v24_professional.py --batch-size 16 --workers 8
+```
+
+### ⚠️ V23 (Deprecated)
 
 **✅ BUG-FREE & ROBUST:**
 - **Fixed Critical Indexing Bug:** Ensures metrics are correct even if image downloads fail.
