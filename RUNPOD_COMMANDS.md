@@ -43,7 +43,21 @@ python test_flickr_splits.py
 
 ## 🔄 Güncel Çalıştırma (Repo Var)
 
-### 🏆 V21 (Gold Standard) - COCO 5K Full Split
+### 🏆 V22 (Final Gold Standard) - COCO 5K + Winoground - RECOMMENDED
+
+**✅ CRITICAL FIXES in V22:**
+- **Fixed ColPali I2T:** Correctly re-computes scores (no transpose bug).
+- **Restored Winoground:** Includes compositional reasoning benchmark.
+- **Strict Validation:** Asserts 5000 images & 5 captions/image.
+- **Expanded Baselines:** Checks SigLIP-Base & LAION-CLIP against published scores.
+
+```bash
+cd /workspace/multimodal-embedding
+git pull origin main
+python run_benchmark_grand_slam_v22_coco_full_fixed.py
+```
+
+### ⚠️ V21 (Legacy - Buggy ColPali)
 
 **✅ The Definitive Benchmark Version:**
 - **Full Dataset:** Uses all 5,000 COCO Test images (no sampling).
