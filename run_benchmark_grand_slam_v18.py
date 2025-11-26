@@ -255,7 +255,7 @@ def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name,
 
 def run_winoground_full(model, processor, model_info):
     print("  > Benchmarking Winoground (Full 400 samples)...")
-    try: dataset = load_dataset("facebook/winoground", split="test", trust_remote_code=True)
+    try: dataset = load_dataset("facebook/winoground", split="test")
     except: return {"Wino Group": "N/A"}
 
     text_score, image_score, group_score, total = 0, 0, 0, len(dataset)
@@ -293,7 +293,7 @@ if __name__ == "__main__":
 
     # Load Flickr30k test set with sampling
     try:
-        ds_flickr_full = load_dataset("lmms-lab/flickr30k", split="test", trust_remote_code=True)
+        ds_flickr_full = load_dataset("lmms-lab/flickr30k", split="test")
         print(f"✓ Loaded Flickr30k full test set: {len(ds_flickr_full)} samples")
 
         # Sample if needed
