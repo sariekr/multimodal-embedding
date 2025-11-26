@@ -13,7 +13,13 @@ FIXES:
 
 3. ✅ Proper ground truth mapping
    - T2I: caption_idx → correct_image_idx
-   - I2T: image_idx → correct_caption_idx (first of 5)
+   - I2T: image_idx → ANY of 5 valid captions (Flickr30k standard)
+   - I2T MRR: Rank of BEST matching caption
+
+4. ✅ Multi-caption I2T evaluation (🟠 Major fix)
+   - OLD: Only checked first caption (undercounted by 60-80%)
+   - NEW: Checks if ANY of image's captions in top-K
+   - image_to_all_captions: Dict[int, List[int]]
 
 See peer review feedback for details.
 """
@@ -99,7 +105,9 @@ def safe_get_text(item, col_name):
         return str(val)
     return str(val)
 
-def compute_bidirectional_metrics(txt_embeds, img_embeds, scores_t2i, scores_i2t, query_to_image_map=None, image_to_query_map=None):
+def compute_bidirectional_metrics(txt_embeds, img_embeds, scores_t2i, scores_i2t,
+                                 query_to_image_map=None, image_to_query_map=None,
+                                 image_to_all_captions=None):
     """
     Compute metrics for both Text-to-Image and Image-to-Text retrieval
 
@@ -110,8 +118,10 @@ def compute_bidirectional_metrics(txt_embeds, img_embeds, scores_t2i, scores_i2t
         scores_i2t: Image-to-Text similarity scores [N_img, N_text]
         query_to_image_map: List mapping text query idx → correct image idx (for T2I)
                            If None, assumes 1:1 diagonal mapping
-        image_to_query_map: List mapping image idx → correct text idx (for I2T)
-                           If None, assumes 1:1 diagonal mapping
+        image_to_query_map: DEPRECATED - Use image_to_all_captions instead
+        image_to_all_captions: Dict mapping image idx → List of ALL valid caption indices
+                              Standard for Flickr30k I2T (each image has 5 captions)
+                              If None, uses image_to_query_map (single caption)
     """
     n_text = scores_t2i.size(0)
     n_img = scores_i2t.size(0)
@@ -120,8 +130,13 @@ def compute_bidirectional_metrics(txt_embeds, img_embeds, scores_t2i, scores_i2t
     # Default to 1:1 mapping if not provided
     if query_to_image_map is None:
         query_to_image_map = list(range(n_text))
-    if image_to_query_map is None:
-        image_to_query_map = list(range(n_img))
+
+    # Handle I2T ground truth
+    if image_to_all_captions is None:
+        # Fallback to single caption per image
+        if image_to_query_map is None:
+            image_to_query_map = list(range(n_img))
+        image_to_all_captions = {i: [image_to_query_map[i]] for i in range(n_img)}
 
     # TEXT-TO-IMAGE RETRIEVAL
     for k in [1, 5, 10]:
@@ -147,27 +162,30 @@ def compute_bidirectional_metrics(txt_embeds, img_embeds, scores_t2i, scores_i2t
         mrr_sum += 1.0 / rank
     metrics["T2I_MRR"] = f"{mrr_sum/n_text:.3f}"
 
-    # IMAGE-TO-TEXT RETRIEVAL
+    # IMAGE-TO-TEXT RETRIEVAL (ANY of multiple valid captions)
     for k in [1, 5, 10]:
         if k > scores_i2t.size(1):  # Check against gallery size
             metrics[f"I2T_R@{k}"] = "N/A"
             continue
         correct = 0
         for i in range(n_img):
-            # For each image query, check if correct text is in top-K
-            correct_txt_idx = image_to_query_map[i]
+            # For each image query, check if ANY valid caption is in top-K
+            valid_caption_indices = image_to_all_captions[i]
             top_k_texts = torch.topk(scores_i2t[i], k=k).indices.tolist()
-            if correct_txt_idx in top_k_texts:
+            if any(cap_idx in top_k_texts for cap_idx in valid_caption_indices):
                 correct += 1
         metrics[f"I2T_R@{k}"] = f"{correct/n_img:.1%}"
 
-    # I2T MRR
+    # I2T MRR - rank of BEST matching caption
     mrr_sum = 0
     for i in range(n_img):
-        correct_txt_idx = image_to_query_map[i]
-        sorted_indices = scores_i2t[i].argsort(descending=True)
-        rank = (sorted_indices == correct_txt_idx).nonzero(as_tuple=True)[0].item() + 1
-        mrr_sum += 1.0 / rank
+        valid_caption_indices = set(image_to_all_captions[i])
+        sorted_indices = scores_i2t[i].argsort(descending=True).tolist()
+        # Find rank of first valid caption
+        for rank, idx in enumerate(sorted_indices, 1):
+            if idx in valid_caption_indices:
+                mrr_sum += 1.0 / rank
+                break
     metrics["I2T_MRR"] = f"{mrr_sum/n_img:.3f}"
 
     return metrics
@@ -191,31 +209,38 @@ def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name,
             images = []
             queries = []
             query_to_image_map = []  # Maps query idx → image idx in gallery
-            image_to_query_map = []  # Maps image idx → first query idx (for I2T)
+            image_to_all_captions = {}  # Maps image idx → ALL its caption indices (for I2T)
 
             for idx, item in enumerate(dataset):
                 img = item[image_col].convert("RGB")
                 images.append(img)  # Add image ONCE to gallery
 
                 captions = item.get(text_col, [])
+                caption_indices = []
+
                 if isinstance(captions, list) and len(captions) > 0:
-                    first_caption_idx = len(queries)
                     for cap in captions:
+                        caption_indices.append(len(queries))
                         queries.append(str(cap))
                         query_to_image_map.append(idx)  # This caption → image idx
-                    image_to_query_map.append(first_caption_idx)  # Image → first caption
                 else:
                     # Fallback to single caption
+                    caption_indices.append(len(queries))
                     queries.append(safe_get_text(item, text_col))
                     query_to_image_map.append(idx)
-                    image_to_query_map.append(len(queries) - 1)
+
+                image_to_all_captions[idx] = caption_indices  # Image → ALL captions
+
+            # For backward compatibility, create single-caption map (deprecated)
+            image_to_query_map = [caps[0] for caps in image_to_all_captions.values()]
 
         else:
             # Simple 1:1 image-caption mapping
             images = [item[image_col].convert("RGB") for item in dataset]
             queries = [safe_get_text(item, text_col) for item in dataset]
             query_to_image_map = list(range(len(images)))  # 1:1 mapping
-            image_to_query_map = list(range(len(images)))  # 1:1 mapping
+            image_to_query_map = list(range(len(images)))  # 1:1 mapping (deprecated)
+            image_to_all_captions = {i: [i] for i in range(len(images))}  # Each image has 1 caption
 
     except Exception as e:
         print(f"    Data Prep Error: {e}")
@@ -325,7 +350,8 @@ def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name,
             scores_t2i,
             scores_i2t,
             query_to_image_map=query_to_image_map,
-            image_to_query_map=image_to_query_map
+            image_to_query_map=image_to_query_map,  # Deprecated
+            image_to_all_captions=image_to_all_captions  # Standard multi-caption support
         )
 
         metrics["Time"] = f"{inference_time:.1f}s"
