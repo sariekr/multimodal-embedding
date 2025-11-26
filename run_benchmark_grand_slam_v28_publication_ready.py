@@ -146,7 +146,7 @@ def download_image_task(item: Dict) -> Tuple[int, bool]:
             time.sleep(0.5 * (2 ** attempt))
     return idx, False
 
-def prepare_dataset_cache(ds: Dataset) -> set:
+def prepare_dataset_cache(ds: Dataset) -> None:
     logger.info(f"PREPARING DATASET (Caching images to {CACHE_DIR})...")
     tasks = []
     for idx, item in enumerate(ds):
@@ -165,7 +165,6 @@ def prepare_dataset_cache(ds: Dataset) -> set:
     if valid_count < (len(ds) * 0.99):
         logger.error("CRITICAL ERROR: >1% download failures. Aborting benchmark.")
         sys.exit(1)
-    return set(ds.filter(lambda x: (CACHE_DIR / f"{x['imgid']}.jpg").exists()).to_indices())
 
 def get_all_captions(item: Dict, col_name: str) -> List[str]:
     val = item.get(col_name, [])
@@ -199,8 +198,7 @@ def compute_metrics(scores_t2i: torch.Tensor, scores_i2t: torch.Tensor,
             target_img_idx = query_to_img[i]
             top_k = torch.topk(scores_t2i[i], k=min(k, n_img)).indices.tolist()
             if target_img_idx in top_k:
-                correct += 0 # This is wrong logic. The next line is correct.
-                correct += 1 # This is the correct line
+                correct += 1
         metrics[f"T2I_R@{k}"] = 100.0 * correct / n_text
 
     # I2T (Multi-caption correct)
@@ -262,23 +260,27 @@ def run_benchmark_coco(model: Union[PreTrainedModel, Any],
         img_to_caps_map[current_coco_image_idx] = list(range(start_idx_for_this_image, len(i2t_targets)))
 
     bs = m_info["batch_size"]
-    
+
+    # Validate dataset is not empty
+    if not images:
+        logger.error("No valid images found in dataset!")
+        return {}
+
     # WARM-UP (Corrected)
     logger.info("    Warming up GPU...")
-    if len(images) > 0: # Only if images exist
-        try:
-            dummy_img = [images[0]] * min(2, len(images))
-            if m_info["type"] == "colpali":
-                _ = model(**processor.process_images(dummy_img).to(DEVICE))
+    try:
+        dummy_img = [images[0]] * min(2, len(images))
+        if m_info["type"] == "colpali":
+            _ = model(**processor.process_images(dummy_img).to(DEVICE))
+        else:
+            inputs = processor(images=dummy_img, return_tensors="pt", padding=True).to(DEVICE)
+            if hasattr(model, 'get_image_features'):
+                _ = model.get_image_features(**inputs)
             else:
-                inputs = processor(images=dummy_img, return_tensors="pt", padding=True).to(DEVICE)
-                if hasattr(model, 'get_image_features'): 
-                    _ = model.get_image_features(**inputs)
-                else: 
-                    _ = model(**inputs).image_embeds # Ensure model is run
-        except Exception as e:
-            logger.warning(f"Warmup failed: {e}")
-            pass
+                _ = model(**inputs).image_embeds # Ensure model is run
+    except Exception as e:
+        logger.warning(f"Warmup failed: {e}")
+        pass
     
     if torch.cuda.is_available():
         torch.cuda.synchronize()
@@ -345,10 +347,10 @@ def run_benchmark_coco(model: Union[PreTrainedModel, Any],
                 # T2I (Text Queries from T2I_QUERIES -> Image Docs from IMAGES)
                 logger.info("    Computing ColPali T2I Scores...")
                 scores_t2i_list = []
-                for i in range(0, len(all_t2i_txt_embeds), chunk_size):
+                for i in range(0, len(t2i_txt_embeds_list), chunk_size):
                     q_chunk = [t.to(DEVICE) for t in t2i_txt_embeds_list[i:i+chunk_size]]
                     scores_row = []
-                    for j in range(0, len(all_img_embeds), chunk_size):
+                    for j in range(0, len(img_embeds_list), chunk_size):
                         d_chunk = [d.to(DEVICE) for d in img_embeds_list[j:j+chunk_size]]
                         s = processor.score(q_chunk, d_chunk)
                         scores_row.append(s.cpu())
@@ -358,10 +360,10 @@ def run_benchmark_coco(model: Union[PreTrainedModel, Any],
                 # I2T (Image Queries from IMAGES -> Text Docs from I2T_TARGETS)
                 logger.info("    Computing ColPali I2T Scores (Images as Queries)...")
                 scores_i2t_list = []
-                for i in range(0, len(all_img_embeds), chunk_size):
+                for i in range(0, len(img_embeds_list), chunk_size):
                     q_chunk = [img.to(DEVICE) for img in img_embeds_list[i:i+chunk_size]]
                     scores_row = []
-                    for j in range(0, len(all_i2t_txt_embeds), chunk_size):
+                    for j in range(0, len(i2t_txt_embeds_list), chunk_size):
                         d_chunk = [t.to(DEVICE) for t in i2t_txt_embeds_list[j:j+chunk_size]]
                         s = processor.score(q_chunk, d_chunk)
                         scores_row.append(s.cpu())
