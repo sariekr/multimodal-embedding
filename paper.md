@@ -70,28 +70,28 @@ Our controlled benchmark isolates architectural contributions by using identical
 
 **Apple DFN5B achieves the highest accuracy in both directions:** With 89.8% T2I R@1 and 89.1% I2T R@1, Apple's model demonstrates symmetric performance across retrieval tasks. Its MRR scores (0.934 T2I, 0.932 I2T) and Winoground leadership (12.8% group score) showcase superior understanding of both visual content and compositional reasoning. The near-identical bidirectional performance proves its robust semantic alignment.
 
-**LAION-CLIP-H and MetaCLIP-H14 offer the best speed-accuracy tradeoff:** These open-source models deliver 87%+ R@1 in both T2I and I2T directions while maintaining exceptional throughput (114 and 98 QPS). LAION-CLIP-H achieves 87.5% T2I and 87.8% I2T with only 0.3% asymmetry. This symmetric performance plus 2.5x faster throughput than Apple makes them ideal for production deployments where both accuracy and speed matter.
+**LAION-CLIP-H and MetaCLIP-H14 offer the best speed-accuracy tradeoff:** These open-source models deliver 87%+ R@1 in both T2I and I2T directions while maintaining exceptional throughput (114 and 98 QPS). LAION-CLIP-H achieves 87.5% T2I and 87.8% I2T with only 0.3pp asymmetry. This symmetric performance plus 2.5x faster throughput than Apple makes them ideal for production deployments where both accuracy and speed matter.
 
-**ColPali exhibits significant directional asymmetry:** While achieving strong T2I performance (84.6% R@1), ColPali drops to 61.4% R@1 for I2T—a 23-point gap. This asymmetry stems from its document-retrieval design where text queries search image documents (natural) versus images querying text (unnatural). The multi-vector late-interaction mechanism fundamentally favors query→document direction. Combined with extreme slowness (7.7 QPS, 15x slower than LAION), ColPali proves unsuitable for general bidirectional retrieval despite respectable T2I scores.
+**ColPali exhibits significant directional asymmetry:** While achieving strong T2I performance (84.6% R@1), ColPali drops to 61.4% R@1 for I2T—a 23pp gap. This asymmetry stems from its document-retrieval design where text queries search image documents (natural) versus images querying text (unnatural). The multi-vector late-interaction mechanism fundamentally favors query→document direction. Combined with slower throughput (7.7 QPS, 15x slower than LAION), ColPali appears better suited for unidirectional document retrieval than general bidirectional tasks.
 
-**SigLIP models show severe bidirectional degradation:** SigLIP-400M's T2I performance (65.8% R@1) collapses to 36.7% I2T—a 29-point asymmetry. SigLIP-Base exhibits similar degradation (38.3% T2I → 32.8% I2T). This directional bias, combined with overall low accuracy, disqualifies SigLIP for production retrieval tasks requiring symmetric performance.
+**SigLIP models show severe bidirectional degradation:** SigLIP-400M's T2I performance (65.8% R@1) drops to 36.7% I2T—a 29pp asymmetry. SigLIP-Base exhibits similar degradation (38.3% T2I → 32.8% I2T). This directional bias, combined with overall low accuracy, suggests limited suitability for production retrieval tasks requiring symmetric performance.
 
 ## Understanding the performance hierarchy
 
 Bidirectional evaluation reveals distinct tiers based on model architecture, retrieval symmetry, and production viability:
 
 **Tier 1: Symmetric high-accuracy models (Apple DFN5B, LAION-CLIP-H, MetaCLIP-H14)**
-- **Apple DFN5B**: Best-in-class accuracy (89.8% T2I, 89.1% I2T) with 0.7% asymmetry
+- **Apple DFN5B**: Best-in-class accuracy (89.8% T2I, 89.1% I2T) with 0.7pp asymmetry
   - 1024d embeddings, 45.6 QPS throughput
   - Winoground leader (12.8% group score) demonstrates compositional reasoning
   - Ideal for: Maximum accuracy applications, content moderation, medical imaging
 
-- **LAION-CLIP-H**: Production sweet spot (87.5% T2I, 87.8% I2T) with 0.3% asymmetry
+- **LAION-CLIP-H**: Production sweet spot (87.5% T2I, 87.8% I2T) with 0.3pp asymmetry
   - 2.5x faster than Apple (113.5 QPS), open-source license
   - Near-perfect symmetry validates robust semantic alignment
   - Ideal for: General-purpose retrieval, image search engines, production RAG
 
-- **MetaCLIP-H14**: Comparable to LAION (87.2% T2I, 87.6% I2T) with 0.4% asymmetry
+- **MetaCLIP-H14**: Comparable to LAION (87.2% T2I, 87.6% I2T) with 0.4pp asymmetry
   - 97.9 QPS, Meta's curated training approach
   - Ideal for: Production systems requiring open-source flexibility
 
@@ -208,23 +208,23 @@ Use **LAION-CLIP-H** or **MetaCLIP-H14** (86%+ R@1, 77-88 QPS)
 - Multi-vector embeddings (1031 tokens) require specialized infrastructure
 - Only justified when: (1) T2I direction only, (2) document-specific features critical
 
-**Avoid in production:**
-- **ColPali for bidirectional retrieval:** 23-point T2I/I2T asymmetry breaks symmetric use cases
-- **SigLIP family:** 29-point (400M) and 6-point (Base) asymmetries plus low absolute accuracy
-- **Jina CLIP-v1:** Slower than Apple (33.1 vs 45.6 QPS) with 10-point lower accuracy
+**Models with notable limitations:**
+- **ColPali for bidirectional retrieval:** 23pp T2I/I2T asymmetry may impact symmetric use cases
+- **SigLIP family:** 29pp (400M) and 6pp (Base) asymmetries plus lower absolute accuracy
+- **Jina CLIP-v1:** Slower than Apple (33.1 vs 45.6 QPS) with 10pp lower accuracy
 
 ## Conclusion
 
 Bidirectional evaluation fundamentally reshapes our understanding of multimodal embedding models:
 
-**Apple DFN5B establishes the symmetric accuracy standard** with 89.8% T2I and 89.1% I2T R@1 (0.7% asymmetry), proving that sophisticated data curation (DataComp filtering) creates robust bidirectional alignment. Its Winoground leadership (12.8% group score) and near-perfect MRR scores (0.934 T2I, 0.932 I2T) demonstrate compositional reasoning that transfers across retrieval directions.
+**Apple DFN5B establishes the symmetric accuracy standard** with 89.8% T2I and 89.1% I2T R@1 (0.7pp asymmetry), proving that sophisticated data curation (DataComp filtering) creates robust bidirectional alignment. Its Winoground leadership (12.8% group score) and near-perfect MRR scores (0.934 T2I, 0.932 I2T) demonstrate compositional reasoning that transfers across retrieval directions.
 
-**LAION-CLIP-H and MetaCLIP-H14 emerge as optimal production choices** with exceptional symmetry (0.3% and 0.4% T2I/I2T gaps) at 2.5x Apple's throughput. LAION-CLIP-H's 87.5% T2I and 87.8% I2T performance with 113.5 QPS throughput provides the best speed-accuracy-symmetry tradeoff. Their open-source licensing and proven scalability make them ideal for bidirectional retrieval systems.
+**LAION-CLIP-H and MetaCLIP-H14 emerge as optimal production choices** with exceptional symmetry (0.3pp and 0.4pp T2I/I2T gaps) at 2.5x Apple's throughput. LAION-CLIP-H's 87.5% T2I and 87.8% I2T performance with 113.5 QPS throughput provides the best speed-accuracy-symmetry tradeoff. Their open-source licensing and proven scalability make them ideal for bidirectional retrieval systems.
 
-**ColPali's 23-point directional asymmetry disqualifies it for general retrieval**. While achieving competitive T2I performance (84.6% R@1), its I2T collapse to 61.4% R@1 reveals fundamental architectural limitations. The document-retrieval design optimizes query→document direction, making reverse retrieval unnatural. Combined with 15x slower throughput than LAION (7.7 vs 113.5 QPS), ColPali should remain strictly confined to unidirectional document search workflows.
+**ColPali's 23pp directional asymmetry limits its applicability for general retrieval**. While achieving competitive T2I performance (84.6% R@1), its I2T performance drops to 61.4% R@1, revealing architectural characteristics optimized for query→document direction. The document-retrieval design makes reverse retrieval less natural. Combined with 15x slower throughput than LAION (7.7 vs 113.5 QPS), ColPali appears best suited for unidirectional document search workflows where T2I dominates.
 
-**SigLIP's severe bidirectional degradation** (29-point gap for 400M, 6-point for Base) alongside low absolute accuracy eliminates it from production consideration. The model family exhibits both poor performance and poor symmetry—a fatal combination for modern retrieval systems.
+**SigLIP's severe bidirectional degradation** (29pp gap for 400M, 6pp for Base) alongside low absolute accuracy suggests limited production viability. The model family exhibits both lower performance and higher asymmetry compared to dense CLIP alternatives.
 
-**The critical insight**: Dense CLIP models (Apple, LAION, MetaCLIP) achieve <1% T2I/I2T asymmetry, while specialized architectures (ColPali) and undertrained models (SigLIP) show 6-29 point gaps. **Bidirectional symmetry is an emergent property of robust semantic alignment**—models that truly understand vision-language relationships perform equally well in both directions.
+**The critical insight**: Dense CLIP models (Apple, LAION, MetaCLIP) achieve <1pp T2I/I2T asymmetry, while specialized architectures (ColPali) and undertrained models (SigLIP) show 6-29pp gaps. **Bidirectional symmetry is an emergent property of robust semantic alignment**—models that truly understand vision-language relationships perform equally well in both directions.
 
-For developers building multimodal applications in 2025: **Demand bidirectional evaluation**. Start with **LAION-CLIP-H** or **MetaCLIP-H14** for symmetric retrieval (0.3% gap, 100+ QPS). Upgrade to **Apple DFN5B** when maximum accuracy justifies 2.5x throughput tradeoff. **Never use ColPali for bidirectional tasks**—its 23-point asymmetry breaks applications requiring reverse search. The era of unidirectional benchmarks has ended—production systems require symmetric performance across both T2I and I2T retrieval.
+For developers building multimodal applications in 2025: **Demand bidirectional evaluation**. Start with **LAION-CLIP-H** or **MetaCLIP-H14** for symmetric retrieval (0.3pp gap, 100+ QPS). Upgrade to **Apple DFN5B** when maximum accuracy justifies 2.5x throughput tradeoff. **ColPali's 23pp asymmetry suggests it is poorly suited for bidirectional tasks**—applications requiring reverse search may experience degraded I2T performance. The era of unidirectional benchmarks has ended—production systems require symmetric performance across both T2I and I2T retrieval.

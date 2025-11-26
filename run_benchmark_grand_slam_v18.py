@@ -132,13 +132,43 @@ def compute_bidirectional_metrics(txt_embeds, img_embeds, scores_t2i, scores_i2t
 
     return metrics
 
-def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name, text_col="caption", image_col="image"):
+def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name, text_col="caption", image_col="image", use_all_captions=False):
+    """
+    Run bidirectional retrieval benchmark.
+
+    Args:
+        use_all_captions: If True, use all captions per image (Flickr30k has 5).
+                         Standard protocol for Flickr30k evaluation.
+    """
     print(f"  > Benchmarking {dataset_name} (N={len(dataset)})...")
     bs = model_info.get("batch_size", 32)
 
     try:
-        images = [item[image_col].convert("RGB") for item in dataset]
-        queries = [safe_get_text(item, text_col) for item in dataset]
+        if use_all_captions:
+            # Flickr30k standard: Use all 5 captions per image
+            images = []
+            queries = []
+            image_to_captions_map = []  # Track which captions belong to which image
+
+            for idx, item in enumerate(dataset):
+                img = item[image_col].convert("RGB")
+                captions = item.get(text_col, [])
+
+                if isinstance(captions, list) and len(captions) > 0:
+                    for cap in captions:
+                        images.append(img)
+                        queries.append(str(cap))
+                        image_to_captions_map.append(idx)  # Original image index
+                else:
+                    # Fallback to single caption
+                    images.append(img)
+                    queries.append(safe_get_text(item, text_col))
+                    image_to_captions_map.append(idx)
+        else:
+            # Simple 1:1 image-caption mapping (old behavior)
+            images = [item[image_col].convert("RGB") for item in dataset]
+            queries = [safe_get_text(item, text_col) for item in dataset]
+            image_to_captions_map = list(range(len(images)))  # 1:1 mapping
     except Exception as e:
         print(f"    Data Prep Error: {e}")
         return {f"{dataset_name} Status": "Error"}
@@ -363,9 +393,9 @@ if __name__ == "__main__":
 
         row = {"Model": m_name}
 
-        # Run Flickr30k benchmark (bidirectional)
+        # Run Flickr30k benchmark (bidirectional, all 5 captions)
         if len(ds_flickr) > 0:
-            row.update(run_retrieval_benchmark(model, processor, m_info, ds_flickr, "Flickr", "caption"))
+            row.update(run_retrieval_benchmark(model, processor, m_info, ds_flickr, "Flickr", "caption", use_all_captions=True))
 
         # Run Winoground benchmark
         row.update(run_winoground_full(model, processor, m_info))
