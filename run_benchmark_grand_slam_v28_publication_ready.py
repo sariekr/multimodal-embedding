@@ -482,10 +482,20 @@ if __name__ == "__main__":
     datasets.disable_progress_bar()
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-    # Disable transformers logging verbosity
+    # Disable transformers logging verbosity (must be before any model loads)
     os.environ["TRANSFORMERS_VERBOSITY"] = "error"
     import transformers
     transformers.logging.set_verbosity_error()
+
+    # Also disable all INFO logging from transformers globally
+    logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
+    logging.getLogger("transformers.configuration_utils").setLevel(logging.ERROR)
+    logging.getLogger("transformers.modeling_flax_utils").setLevel(logging.ERROR)
+
+    # Suppress ALL loggers except our own
+    for name in logging.root.manager.loggerDict:
+        if not name.startswith("__main__"):
+            logging.getLogger(name).setLevel(logging.ERROR)
 
     # 0. Load Full COCO Dataset (Once)
     logger.info("LOADING COCO-KARPATHY TEST SET...")
