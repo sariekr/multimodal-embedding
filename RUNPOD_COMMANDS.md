@@ -20,18 +20,22 @@ pip install colpali-engine flash_attn
 
 ## 🔄 Güncel Çalıştırma (Repo Var)
 
-### Tek Run (Hızlı Test)
+### ⭐ V19 FIXED (PEER REVIEW) - ÖNERİLEN
 ```bash
 cd /workspace/multimodal-embedding
 git pull origin main
-python run_benchmark_grand_slam_v18.py  # Single seed (42)
+python run_benchmark_grand_slam_v19_fixed.py  # Critical fixes applied
 ```
 
-### Multi-Seed (Statistical Significance) ⭐ ÖNERİLEN
+**🔴 V19 Critical Fixes:**
+1. ✅ Fixed multi-caption logic (was BROKEN in v18)
+2. ✅ Full test set (no sampling)
+3. ✅ Proper ground truth mapping
+
+### Legacy Versions (Deprecated)
 ```bash
-cd /workspace/multimodal-embedding
-git pull origin main
-bash run_multi_seed_benchmark.sh  # 5 seeds with mean ± std
+# V18 - Has critical bugs, don't use
+python run_benchmark_grand_slam_v18.py  # ❌ BROKEN multi-caption logic
 ```
 
 ## ⚠️ v17 ÇALIŞTIRMA (Hatalı - Kullanma!)
@@ -76,12 +80,17 @@ Ctrl+C
 
 ## 📊 Benchmark Versiyonları
 
-| Version | Flickr Samples | Seeds | Direction | Runtime | Maliyet | Status |
-|---------|---------------|-------|-----------|---------|---------|--------|
-| v16 | 1,000 | 1 | T2I only | ~3h | ~$9 | ✅ Old |
-| v17 | 31,783 (BUG!) | 1 | T2I + I2T | 15-20h | ~$60 | ❌ Train set bug |
-| v18 (single) | 1,000 | 1 | T2I + I2T | ~2-3h | ~$9 | ✅ Quick test |
-| v18 (multi-seed) | 1,000 | 5 | T2I + I2T | ~12-15h | ~$45 | ⭐ Recommended |
+| Version | Flickr Samples | Multi-Caption | Direction | Runtime | Status |
+|---------|---------------|---------------|-----------|---------|--------|
+| v16 | 1,000 (sampled) | ❌ Single only | T2I only | ~3h | ✅ Old |
+| v17 | 31,783 (BUG!) | ❌ Single only | T2I + I2T | 15-20h | ❌ Train set bug |
+| v18 | 1,000 (sampled) | 🔴 BROKEN | T2I + I2T | ~2-3h | ❌ Critical bugs |
+| v19 FIXED | Full test set | ✅ Correct | T2I + I2T | ~3-4h | ⭐ RECOMMENDED |
+
+**🔴 V18 Critical Bugs:**
+- Gallery duplicates images for each caption (fatal)
+- Diagonal ground truth assumption (wrong)
+- Random sampling breaks comparisons
 
 ## 🎯 Multi-Seed Benchmark (ÖNERİLEN) ⭐
 
