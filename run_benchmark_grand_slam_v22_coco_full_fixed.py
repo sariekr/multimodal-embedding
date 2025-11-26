@@ -238,7 +238,12 @@ def run_benchmark_coco(model, processor, m_info, dataset, valid_indices):
             continue
 
         captions = get_all_captions(item, "sentences")
-        assert len(captions) == 5, f"Expected 5 captions, got {len(captions)}"
+        
+        # Relaxed check: At least 5 captions
+        assert len(captions) >= 5, f"Expected at least 5 captions, got {len(captions)}"
+        
+        # Truncate to first 5 for standard benchmarking
+        captions = captions[:5]
         
         current_caps_indices = []
         for cap in captions:
@@ -387,8 +392,8 @@ if __name__ == "__main__":
     print("Verifying caption counts...")
     for item in ds_full:
         captions = get_all_captions(item, "sentences")
-        assert len(captions) == 5, f"Expected 5 captions, got {len(captions)}"
-    print("✓ All images have 5 captions")
+        assert len(captions) >= 5, f"Expected at least 5 captions, got {len(captions)}"
+    print("✓ All images have at least 5 captions")
 
     # Prepare (Download & Cache)
     valid_indices = prepare_dataset(ds_full)
