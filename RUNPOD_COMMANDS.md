@@ -43,7 +43,21 @@ python test_flickr_splits.py
 
 ## 🔄 Güncel Çalıştırma (Repo Var)
 
-### 🏆 V22 (Final Gold Standard) - COCO 5K + Winoground - RECOMMENDED
+### 🏆 V23 (Final Robust Version) - RECOMMENDED
+
+**✅ BUG-FREE & ROBUST:**
+- **Fixed Critical Indexing Bug:** Ensures metrics are correct even if image downloads fail.
+- **Clean Winoground Logic:** Clarified scoring matrices.
+- **GPU Warm-up:** Stabilizes timing for accurate QPS.
+- **Memory Reporting:** Tracks GPU usage.
+
+```bash
+cd /workspace/multimodal-embedding
+git pull origin main
+python run_benchmark_grand_slam_v23_final.py
+```
+
+### ⚠️ V22 (Deprecated - Indexing Bug)
 
 **✅ CRITICAL FIXES in V22:**
 - **Fixed ColPali I2T:** Correctly re-computes scores (no transpose bug).
