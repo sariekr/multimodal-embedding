@@ -18,19 +18,45 @@ pip install transformers datasets pillow timm einops protobuf sentencepiece pand
 pip install colpali-engine flash_attn
 ```
 
+## 🔍 Dataset Split Kontrolü (ÖNCELİK!)
+
+**⚠️ CRITICAL:** V19'da yanlış dataset split kullanıyoruz! Önce doğru split'i bul:
+
+```bash
+cd /workspace/multimodal-embedding
+git pull origin main
+python test_flickr_splits.py
+```
+
+**Beklenen çıktı:**
+```
+✅ MATCHES KARPATHY SPLIT!
+   Train: 29,000 (expected ~29k)
+   Val:   1,014 (expected ~1k)
+   Test:  1,000 (expected ~1k)
+```
+
+**Eğer match etmezse:**
+- ❌ nlphuji/flickr30k doğru split'e sahip değil
+- ❌ lmms-lab/flickr30k zaten 31K sample'lık (yanlış)
+- 🔧 Manual Karpathy split download etmemiz lazım
+
 ## 🔄 Güncel Çalıştırma (Repo Var)
 
-### ⭐ V19 FIXED (PEER REVIEW) - ÖNERİLEN
+### ⚠️ V19 FIXED (DATASET SPLIT HATASI VAR!)
+
+**🔴 KULLANMA - Yanlış dataset split:**
 ```bash
 cd /workspace/multimodal-embedding
 git pull origin main
 python run_benchmark_grand_slam_v19_fixed.py  # Critical fixes applied
 ```
 
-**🔴 V19 Critical Fixes:**
+**🔴 V19 Issues:**
 1. ✅ Fixed multi-caption logic (was BROKEN in v18)
-2. ✅ Full test set (no sampling)
+2. ❌ WRONG DATASET SPLIT (random 1K from 31K train set)
 3. ✅ Proper ground truth mapping
+4. ❌ Results NOT comparable to published work
 
 ### Legacy Versions (Deprecated)
 ```bash
