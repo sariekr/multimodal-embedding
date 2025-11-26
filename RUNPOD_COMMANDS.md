@@ -43,7 +43,21 @@ python test_flickr_splits.py
 
 ## 🔄 Güncel Çalıştırma (Repo Var)
 
-### ⚠️ V19 FIXED (DATASET SPLIT HATASI VAR!)
+### 🌟 V20 (MS-COCO Grand Slam) - RECOMMENDED
+
+**✅ Addresses all peer review criticisms:**
+- **Dataset:** MS-COCO Karpathy Split (via `yerevann/coco-karpathy`)
+- **Validation:** Checks for 5 captions/image
+- **Metrics:** `Img/s` (fair speed) + `QPS`
+- **Scope:** COCO Test (1k sample) + Winoground
+
+```bash
+cd /workspace/multimodal-embedding
+git pull origin main
+python run_benchmark_grand_slam_v20_coco.py
+```
+
+### ⚠️ V19 FIXED (DEPRECATED - Flickr Issues)
 
 **🔴 KULLANMA - Yanlış dataset split:**
 ```bash
