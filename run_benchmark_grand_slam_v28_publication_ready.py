@@ -47,6 +47,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Silence noisy libraries
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("datasets").setLevel(logging.ERROR)
+logging.getLogger("torch").setLevel(logging.ERROR)
+logging.getLogger("PIL").setLevel(logging.ERROR)
+
 # --- ARGS ---
 def parse_args():
     parser = argparse.ArgumentParser(description="Grand Slam Multimodal Benchmark V28")
@@ -470,11 +476,16 @@ if __name__ == "__main__":
     init_globals()
 
     logger.info(f"BENCHMARK START (V28) - Output: {ARGS.output}")
-    
+
     # Disable datasets multiprocessing to prevent worker import loops
     import datasets
     datasets.disable_progress_bar()
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+    # Disable transformers logging verbosity
+    os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+    import transformers
+    transformers.logging.set_verbosity_error()
 
     # 0. Load Full COCO Dataset (Once)
     logger.info("LOADING COCO-KARPATHY TEST SET...")
