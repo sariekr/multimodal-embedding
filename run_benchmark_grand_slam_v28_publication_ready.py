@@ -87,17 +87,19 @@ REFERENCE_RANGES = {
     "LAION-CLIP-H":  {"T2I_R@1": (40.0, 50.0)},
 }
 
-# --- MODEL LIST ---
-MODELS_TO_TEST = [
-    {"name": "ColPali-v1.3",  "id": "vidore/colpali-v1.3", "type": "colpali", "batch_size": 4},
-    {"name": "SigLIP-400M",   "id": "google/siglip-so400m-patch14-384", "type": "siglip", "batch_size": ARGS.batch_size},
-    {"name": "SigLIP-Base",   "id": "google/siglip-base-patch16-224", "type": "siglip", "batch_size": ARGS.batch_size},
-    {"name": "LAION-CLIP-H",  "id": "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", "type": "dense", "batch_size": ARGS.batch_size},
-    {"name": "OpenAI-CLIP-L", "id": "openai/clip-vit-large-patch14-336", "type": "dense", "batch_size": ARGS.batch_size},
-    {"name": "Jina-CLIP-v1", "id": "jinaai/jina-clip-v1", "type": "dense", "trust": True, "batch_size": ARGS.batch_size},
-    {"name": "Apple-DFN5B-H", "id": "apple/DFN5B-CLIP-ViT-H-14-378", "type": "dense", "trust": True, "batch_size": ARGS.batch_size},
-    {"name": "MetaCLIP-H14",  "id": "facebook/metaclip-h14-fullcc2.5b", "type": "dense", "trust": True, "batch_size": ARGS.batch_size} # Standardized to BS 32
-]
+# --- MODEL LIST (lazy to avoid ARGS reference at module level) ---
+def get_models_to_test():
+    """Returns model configurations - must be called after init_globals()"""
+    return [
+        {"name": "ColPali-v1.3",  "id": "vidore/colpali-v1.3", "type": "colpali", "batch_size": 4},
+        {"name": "SigLIP-400M",   "id": "google/siglip-so400m-patch14-384", "type": "siglip", "batch_size": ARGS.batch_size},
+        {"name": "SigLIP-Base",   "id": "google/siglip-base-patch16-224", "type": "siglip", "batch_size": ARGS.batch_size},
+        {"name": "LAION-CLIP-H",  "id": "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", "type": "dense", "batch_size": ARGS.batch_size},
+        {"name": "OpenAI-CLIP-L", "id": "openai/clip-vit-large-patch14-336", "type": "dense", "batch_size": ARGS.batch_size},
+        {"name": "Jina-CLIP-v1", "id": "jinaai/jina-clip-v1", "type": "dense", "trust": True, "batch_size": ARGS.batch_size},
+        {"name": "Apple-DFN5B-H", "id": "apple/DFN5B-CLIP-ViT-H-14-378", "type": "dense", "trust": True, "batch_size": ARGS.batch_size},
+        {"name": "MetaCLIP-H14",  "id": "facebook/metaclip-h14-fullcc2.5b", "type": "dense", "trust": True, "batch_size": ARGS.batch_size}
+    ]
 
 # --- COLPALI CHECK ---
 try:
@@ -520,7 +522,10 @@ if __name__ == "__main__":
     # Create/Clear output file for aggregated results
     if os.path.exists(ARGS.output):
         os.remove(ARGS.output)
-    
+
+    # Get model configurations (after ARGS is initialized)
+    MODELS_TO_TEST = get_models_to_test()
+
     # MODEL LOOP
     for m_info in MODELS_TO_TEST:
         logger.info(f"{'='*60}")
