@@ -43,7 +43,22 @@ python test_flickr_splits.py
 
 ## 🔄 Güncel Çalıştırma (Repo Var)
 
-### 🚀 V27 (Optimized & Polished) - THE NEW GOLD STANDARD
+### 🥇 V28 (Publication-Ready) - THE DEFINITIVE STANDARD
+
+**✅ SCIENTIFICALLY SOUND & ROBUST:**
+- **Correct Winoground Stats:** Aggregates Winoground without misleading 0.0 std dev.
+- **Standard COCO Evaluation:** Implements 1-caption-per-image T2I retrieval (standard protocol).
+- **Robust Sampling:** Prefilters dataset for consistency across runs.
+- **Optimized:** Model loaded once, Winoground run once.
+
+```bash
+cd /workspace/multimodal-embedding
+git pull origin main
+# Run the publication-ready benchmark (3 runs recommended)
+python run_benchmark_grand_slam_v28_publication_ready.py --runs 3
+```
+
+### ⚠️ V27 (Deprecated - Non-Standard COCO)
 
 **✅ OPTIMIZED & BUG-FREE:**
 - **Fixed Caption Bug:** Checks caption count *before* processing images (no orphaned images).
