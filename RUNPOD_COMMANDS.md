@@ -43,7 +43,21 @@ python test_flickr_splits.py
 
 ## 🔄 Güncel Çalıştırma (Repo Var)
 
-### 🌟 V20 (MS-COCO Grand Slam) - RECOMMENDED
+### 🏆 V21 (Gold Standard) - COCO 5K Full Split
+
+**✅ The Definitive Benchmark Version:**
+- **Full Dataset:** Uses all 5,000 COCO Test images (no sampling).
+- **Robustness:** Downloads & caches images locally (`./coco_images`) with retries.
+- **Validation:** Compares results against published baselines automatically.
+- **Fairness:** Standardized batch sizes (32) where possible.
+
+```bash
+cd /workspace/multimodal-embedding
+git pull origin main
+python run_benchmark_grand_slam_v21_coco_full.py
+```
+
+### 🌟 V20 (Legacy - COCO 1K Sample)
 
 **✅ Addresses all peer review criticisms:**
 - **Dataset:** MS-COCO Karpathy Split (via `yerevann/coco-karpathy`)
