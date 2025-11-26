@@ -420,10 +420,20 @@ def run_winoground_full(model, processor, model_info):
 if __name__ == "__main__":
     print(">>> LOADING DATASETS...")
 
-    # Load Flickr30k test set with sampling
+    # Load Flickr30k test set
+    # NOTE: lmms-lab/flickr30k has wrong split names!
+    # - "test" = 31783 samples (actually TRAIN set)
+    # - Real test set is in different splits or datasets
     try:
-        ds_flickr_full = load_dataset("lmms-lab/flickr30k", split="test")
-        print(f"✓ Loaded Flickr30k full test set: {len(ds_flickr_full)} samples")
+        # Try standard split first
+        try:
+            ds_flickr_full = load_dataset("nlphuji/flickr30k", split="test")
+            print(f"✓ Loaded Flickr30k test set from nlphuji: {len(ds_flickr_full)} samples")
+        except:
+            # Fallback: Use validation split from lmms-lab (smaller, ~1K)
+            print("⚠️  nlphuji/flickr30k not available, trying lmms-lab validation split")
+            ds_flickr_full = load_dataset("lmms-lab/flickr30k", split="validation")
+            print(f"✓ Loaded Flickr30k validation set: {len(ds_flickr_full)} samples")
 
         # Sample if needed
         if FLICKR_SAMPLE_SIZE and FLICKR_SAMPLE_SIZE < len(ds_flickr_full):
