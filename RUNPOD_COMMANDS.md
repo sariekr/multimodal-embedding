@@ -43,7 +43,25 @@ python test_flickr_splits.py
 
 ## 🔄 Güncel Çalıştırma (Repo Var)
 
-### 🚀 V24 (Professional Production Ready) - STANDARD
+### 🔬 V25 (Scientific Standard) - RECOMMENDED
+
+**✅ Statistically Rigorous & Correct:**
+- **Statistical Significance:** Runs 3 iterations (default) and reports `Mean ± Std Dev`.
+- **Correct Scoring:** ColPali I2T now correctly re-computes scores (MaxSim is asymmetric).
+- **Proper Sampling:** Uses random shuffle per run to avoid bias.
+- **Citations:** Includes sources for baseline expectations.
+
+```bash
+cd /workspace/multimodal-embedding
+git pull origin main
+# Run standard scientific benchmark (3 runs)
+python run_benchmark_grand_slam_v25_statistically_significant.py --runs 3
+
+# Fast check (1 run)
+# python run_benchmark_grand_slam_v25_statistically_significant.py --runs 1
+```
+
+### ⚠️ V24 (Deprecated - Single Run)
 
 **✅ Production Grade Features:**
 - **Checkpointing:** Saves results to CSV *instantly* after each model (resilient to crashes).
