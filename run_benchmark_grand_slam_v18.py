@@ -255,8 +255,11 @@ def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name,
 
 def run_winoground_full(model, processor, model_info):
     print("  > Benchmarking Winoground (Full 400 samples)...")
-    try: dataset = load_dataset("facebook/winoground", split="test")
-    except: return {"Wino Group": "N/A"}
+    try:
+        dataset = load_dataset("facebook/winoground", split="test")
+    except Exception as e:
+        print(f"    Failed to load Winoground: {e}")
+        return {"Wino Group": "N/A"}
 
     text_score, image_score, group_score, total = 0, 0, 0, len(dataset)
     try:
@@ -285,7 +288,11 @@ def run_winoground_full(model, processor, model_info):
             if (s[0,0] > s[0,1] and s[1,1] > s[1,0]): image_score += 1
             if (s[0,0] > s[1,0] and s[1,1] > s[0,1]) and (s[0,0] > s[0,1] and s[1,1] > s[1,0]): group_score += 1
         return {"Wino Text": f"{text_score/total:.1%}", "Wino Image": f"{image_score/total:.1%}", "Wino Group": f"{group_score/total:.1%}"}
-    except Exception as e: return {"Wino Group": "Error"}
+    except Exception as e:
+        print(f"    Winoground inference error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"Wino Group": "Error"}
 
 # --- MAIN ---
 if __name__ == "__main__":
