@@ -208,26 +208,27 @@ def run_retrieval_benchmark(model, processor, model_info, dataset, dataset_name,
 
             for idx, item in enumerate(dataset):
                 # --- IMAGE LOADING ---
-                img = None
-                if image_col in item and item[image_col] is not None:
-                    img = item[image_col] # If it's already an object
-                    if not isinstance(img, Image.Image):
-                         # Maybe it's a path?
-                         pass
+                img = item.get(image_col)
                 
-                if img is None and 'url' in item:
-                    # Download from URL
+                # If the column contains a URL string, download it
+                if isinstance(img, str) and (img.startswith('http') or img.startswith('www')):
+                    img = download_image(img)
+                
+                # Fallback: If we still don't have an image, try the specific 'url' column
+                if img is None and 'url' in item and image_col != 'url':
                     img = download_image(item['url'])
                 
+                # If still None (download failed or no source), skip
                 if img is None:
-                    # Fail safe
-                    print(f"    Skipping index {idx}: No image found")
+                    print(f"    Skipping index {idx}: No image found or download failed")
                     continue
                 
+                # Final check: Must be a PIL Image
                 if not isinstance(img, Image.Image):
-                     img = img.convert("RGB")
-                else:
-                     img = img.convert("RGB")
+                    print(f"    Skipping index {idx}: Invalid image format {type(img)}")
+                    continue
+
+                img = img.convert("RGB")
 
                 # --- CAPTION LOADING ---
                 captions = item.get(text_col, [])
