@@ -489,6 +489,11 @@ def run_bootstrap_benchmark(model: Union[PreTrainedModel, Any],
     3. Compute metrics on sampled embeddings (cheap operation)
 
     This is MUCH faster than re-encoding for each iteration.
+
+    CRITICAL NOTE: QPS is computed from ENCODING time only, NOT total bootstrap time.
+    - Encoding time: Time to encode all images/captions once (~60s for LAION)
+    - Total time: Encoding + 1000 bootstrap iterations (~2-3 hours)
+    - QPS = images / encoding_time (correct throughput metric)
     """
 
     logger.info(f"Benchmarking {m_info['name']} with {n_iterations} bootstrap iterations...")
@@ -646,9 +651,13 @@ def run_bootstrap_benchmark(model: Union[PreTrainedModel, Any],
         aggregated[f"{key}_std"] = np.std(values)
 
     # Throughput metrics
-    aggregated["Time"] = total_time
-    aggregated["QPS"] = len(images) * n_iterations / total_time
+    # CRITICAL: QPS should be based on ENCODING time only (not bootstrap iterations)
+    # Encoding time = time to encode all images/captions once
+    # QPS = queries (images) per second during encoding
+    aggregated["Time"] = total_time  # Total time including all bootstrap iterations
+    aggregated["QPS"] = len(images) / encoding_time  # Correct: actual throughput
     aggregated["Encoding_Time"] = encoding_time
+    aggregated["Img_per_sec"] = len(images) / encoding_time  # Images/second
 
     # Failure analysis (aggregate across all iterations)
     logger.info("Performing failure analysis...")
