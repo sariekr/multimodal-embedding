@@ -19,9 +19,13 @@ import argparse
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple
-from scipy import stats
 import json
 from pathlib import Path
+
+# Numpy-based normal CDF (replacement for scipy.stats.norm.cdf)
+def norm_cdf(x):
+    """Standard normal cumulative distribution function using erf"""
+    return 0.5 * (1 + np.erf(x / np.sqrt(2)))
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Analyze V29 statistical results")
@@ -91,7 +95,7 @@ def compute_pairwise_significance(df: pd.DataFrame, metric: str, alpha: float = 
                 # Approximate p-value using effect size
                 # (This is a rough approximation; true p-value would require bootstrap samples)
                 z_score = effect_size
-                p_value = 2 * (1 - stats.norm.cdf(z_score))  # Two-tailed
+                p_value = 2 * (1 - norm_cdf(z_score))  # Two-tailed
                 sig_matrix[i, j] = min(p_value, 1.0)
 
     sig_df = pd.DataFrame(sig_matrix, index=models, columns=models)

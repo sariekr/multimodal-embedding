@@ -1,5 +1,0 @@
-Model,Image Score,Group Score
-OpenAI-CLIP-L,10.75%,7.75%
-Jina-CLIP-v1,8.50%,5.75%
-Nomic-Vision,99.50%,99.25%
-LAION-CLIP-H,13.00%,10.50%

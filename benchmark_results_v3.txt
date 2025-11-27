@@ -1,5 +1,0 @@
-Model,Image Score,Group Score
-OpenAI-CLIP-L,10.75%,7.75%
-SigLIP-400M,10.75%,4.25%
-Jina-CLIP-v1,8.50%,5.75%
-LAION-CLIP-H,13.00%,10.50%

@@ -38,8 +38,10 @@ This is an **improved version** of the COCO benchmark that addresses the critica
 ### 1. Install Dependencies
 
 ```bash
-pip install torch transformers datasets pillow scipy pandas tqdm requests
+pip install torch transformers datasets pillow pandas tqdm requests numpy
 ```
+
+**Note:** No scipy required! All statistical functions use numpy.
 
 ### 2. Run Benchmark (Quick Test - 100 iterations)
 

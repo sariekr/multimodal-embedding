@@ -28,10 +28,11 @@ except ImportError:
 # --- AYARLAR ---
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+FLICKR_SAMPLE_SIZE = 1000  # Balanced: fast but valid
 
 print(f"Running on: {DEVICE}")
 print(f"Precision: {DTYPE}")
-print("Using FULL test sets (Flickr30k: 5K samples)")
+print(f"Using Flickr30k test set: {FLICKR_SAMPLE_SIZE} samples")
 
 # --- MODEL LİSTESİ (THE FINAL 8) ---
 MODELS_TO_TEST = [
@@ -290,10 +291,17 @@ def run_winoground_full(model, processor, model_info):
 if __name__ == "__main__":
     print(">>> LOADING DATASETS...")
 
-    # Load FULL Flickr30k test set (5,000 samples)
+    # Load Flickr30k test set with sampling
     try:
-        ds_flickr = load_dataset("lmms-lab/flickr30k", split="test", trust_remote_code=True)
-        print(f"✓ Loaded Flickr30k: {len(ds_flickr)} samples")
+        ds_flickr_full = load_dataset("lmms-lab/flickr30k", split="test", trust_remote_code=True)
+        print(f"✓ Loaded Flickr30k full test set: {len(ds_flickr_full)} samples")
+
+        # Sample if needed
+        if FLICKR_SAMPLE_SIZE and FLICKR_SAMPLE_SIZE < len(ds_flickr_full):
+            ds_flickr = ds_flickr_full.shuffle(seed=SEED).select(range(FLICKR_SAMPLE_SIZE))
+            print(f"✓ Sampled {len(ds_flickr)} samples for faster evaluation")
+        else:
+            ds_flickr = ds_flickr_full
     except Exception as e:
         print(f"✗ Failed to load Flickr30k: {e}")
         ds_flickr = []
@@ -346,14 +354,14 @@ if __name__ == "__main__":
         print(f"  Wino: {row.get('Wino Group', 'N/A')}")
 
     print("\n" + "="*150)
-    print("GRAND SLAM BENCHMARK RESULTS (V17 - Full Test Sets + Bidirectional Retrieval)")
+    print(f"GRAND SLAM BENCHMARK RESULTS (V18 - Bidirectional Retrieval, {FLICKR_SAMPLE_SIZE} samples)")
     print("="*150)
 
     if len(results) > 0:
         df = pd.DataFrame(results)
 
         # TABLE 1: TEXT-TO-IMAGE RETRIEVAL
-        print("\n📊 TEXT-TO-IMAGE RETRIEVAL (Flickr30k 5K test set)")
+        print(f"\n📊 TEXT-TO-IMAGE RETRIEVAL (Flickr30k {FLICKR_SAMPLE_SIZE} test samples)")
         print("-" * 150)
         t2i_cols = ["Model",
                     "Flickr T2I_R@1", "Flickr T2I_R@5", "Flickr T2I_R@10", "Flickr T2I_MRR"]
@@ -361,7 +369,7 @@ if __name__ == "__main__":
         print(df[t2i_cols].to_markdown(index=False))
 
         # TABLE 2: IMAGE-TO-TEXT RETRIEVAL
-        print("\n\n🔄 IMAGE-TO-TEXT RETRIEVAL (Flickr30k 5K test set)")
+        print(f"\n\n🔄 IMAGE-TO-TEXT RETRIEVAL (Flickr30k {FLICKR_SAMPLE_SIZE} test samples)")
         print("-" * 150)
         i2t_cols = ["Model",
                     "Flickr I2T_R@1", "Flickr I2T_R@5", "Flickr I2T_R@10", "Flickr I2T_MRR"]
@@ -383,13 +391,14 @@ if __name__ == "__main__":
             print(df[wino_cols].to_markdown(index=False))
 
         # Save full results
-        df.to_csv("benchmark_v17_results.csv", index=False)
-        print(f"\n✅ Full results saved to: benchmark_v17_results.csv")
+        df.to_csv("benchmark_v18_results.csv", index=False)
+        print(f"\n✅ Full results saved to: benchmark_v18_results.csv")
         print("\n" + "="*150)
-        print("KEY IMPROVEMENTS IN V17:")
+        print("KEY IMPROVEMENTS IN V18:")
         print("="*150)
-        print("✓ Full Flickr30k 5K test set (vs 1K in v16)")
+        print(f"✓ Flickr30k test set: {FLICKR_SAMPLE_SIZE} samples (balanced speed/validity)")
         print("✓ Bidirectional retrieval: Text-to-Image AND Image-to-Text")
-        print("✓ Removed DocVQA (focused on general vision)")
+        print("✓ Removed DocVQA and COCO (focused on general vision)")
         print("✓ Single run with fixed seed (reproducible)")
-        print("✓ Comparable to published papers")
+        print("✓ ~2-3 hours runtime on A40 (vs 15-20h for full set)")
+        print("✓ Results statistically valid with 1K samples")

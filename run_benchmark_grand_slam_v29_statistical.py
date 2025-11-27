@@ -48,7 +48,6 @@ import pandas as pd
 from datasets import load_dataset, Dataset
 from transformers import AutoModel, AutoProcessor, SiglipModel, SiglipProcessor, PreTrainedModel, ProcessorMixin
 from PIL import Image
-from scipy import stats
 from collections import defaultdict
 
 # --- LOGGING SETUP ---

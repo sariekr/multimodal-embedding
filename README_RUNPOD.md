@@ -28,7 +28,14 @@ source .venv/bin/activate
 *(You will see `(.venv)` prefix in your terminal prompt, indicating the virtual environment is active.)*
 
 ### 2.3. Install Python Libraries
-The PyTorch template already provides `torch`, `torchvision`, `torchaudio`. We only need to install the remaining libraries within our virtual environment.
+Since we are using a fresh virtual environment, we need to install PyTorch and the other libraries.
+
+First, install PyTorch with CUDA support:
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+```
+
+Then, install the remaining heavyweights:
 ```bash
 pip install transformers datasets pillow timm einops protobuf sentencepiece pandas tabulate
 pip install colpali-engine flash_attn
