@@ -1,28 +1,30 @@
-# Comprehensive Evaluation of Multimodal Embedding Models on MS-COCO
+# Comprehensive Evaluation of Multimodal Embedding Models on MS-COCO Karpathy and Winoground
 
 **Authors:** Ekrem Krem
 **Date:** November 2025
 **Dataset:** MS-COCO Karpathy (5,000 images) + Winoground (400 samples)
-**Models Evaluated:** 7 state-of-the-art vision-language models
+**Models Evaluated:** 7 vision-language models
 
 ---
 
 ## Executive Summary
 
-This report presents a comprehensive evaluation of 7 leading multimodal embedding models on the MS-COCO Karpathy benchmark (5,000 test images) with bidirectional retrieval evaluation (Text-to-Image and Image-to-Text). We additionally evaluate compositional reasoning capabilities using the Winoground dataset (400 challenging image-text pairs).
+This report presents a comprehensive evaluation of 7 multimodal embedding models on the MS-COCO Karpathy retrieval benchmark (5,000 test images) and the Winoground compositional reasoning dataset (400 samples). We evaluate bidirectional retrieval (Text-to-Image and Image-to-Text) on COCO Karpathy and fine-grained compositional understanding on Winoground.
+
+**Scope:** Our benchmark is intentionally focused on COCO Karpathy and Winoground. We do not claim coverage of other retrieval datasets (e.g., Flickr30K) or larger compositional suites (e.g., ARO, SugarCrepe), which we leave for future work.
 
 ### Key Findings
 
-1. **Apple DFN5B-H achieves state-of-the-art performance** with 50.1% T2I R@1, establishing new SOTA on COCO Karpathy
+1. **Apple DFN5B-H achieves the strongest performance among the 7 models we evaluate**, with 50.1% T2I R@1 on MS-COCO Karpathy, surpassing prior reported CLIP/ALIGN baselines
 2. **LAION-CLIP-H offers the best speed-accuracy tradeoff** at 46.3% T2I R@1 and 83.8 QPS
 3. **I2T asymmetry is consistent across dense models** with 16-24pp gap (expected due to 5 captions per image)
 4. **ColPali exhibits unique symmetric behavior** with only 3.9pp I2T advantage, unlike all other models
-5. **Compositional reasoning remains challenging** with Apple DFN5B leading at 35.2% Winoground Image score
+5. **On Winoground, compositional reasoning remains challenging**, with Apple DFN5B leading at 35.2% Image score among the models we evaluate
 
 ### Performance Hierarchy
 
 **Tier 1: High-Performance Dense Models (45-50% T2I R@1)**
-- Apple-DFN5B-H: 50.1% (SOTA, but slower at 34.4 QPS)
+- Apple-DFN5B-H: 50.1% (best among evaluated, but slower at 34.4 QPS)
 - LAION-CLIP-H: 46.3% (best balance: high accuracy + 83.8 QPS)
 - MetaCLIP-H14: 45.8% (strong open-source alternative)
 
@@ -105,7 +107,9 @@ Winoground evaluates fine-grained compositional understanding with 400 challengi
 
 Performance measured on NVIDIA A40 (48GB) with optimized batch sizes per model.
 
-| Model | QPS (Queries/sec) | Time (5000 imgs) | Batch Size | Speedup vs ColPali |
+**QPS Definition:** QPS (queries per second) measures end-to-end embedding throughput: we encode text queries and all 5,000 images per evaluation run. In production retrieval scenarios, gallery embeddings would be pre-computed; QPS here reflects the encoding step only (no ANN index search overhead).
+
+| Model | QPS (Queries/sec) | Time to Encode 5000 Images | Batch Size | Speedup vs ColPali |
 |:------|:-----------------:|:----------------:|:----------:|:------------------:|
 | **LAION-CLIP-H** | **83.8** | 59.6s | 32 | **28.9x** |
 | **MetaCLIP-H14** | **76.3** | 65.5s | 32 | **26.3x** |
@@ -125,9 +129,9 @@ Performance measured on NVIDIA A40 (48GB) with optimized batch sizes per model.
 
 ## 2. Key Findings & Analysis
 
-### 2.1 Apple DFN5B-H Achieves State-of-the-Art
+### 2.1 Apple DFN5B-H is Best-in-Class Among Evaluated Models
 
-Apple's DFN5B-CLIP-ViT-H-14-378 establishes new SOTA on MS-COCO Karpathy:
+Apple's DFN5B-CLIP-ViT-H-14-378 achieves the strongest performance on MS-COCO Karpathy among the 7 models we evaluate:
 
 | Metric | Apple DFN5B | LAION-CLIP-H | Improvement |
 |:-------|:-----------:|:------------:|:-----------:|
@@ -145,7 +149,7 @@ Apple's DFN5B-CLIP-ViT-H-14-378 establishes new SOTA on MS-COCO Karpathy:
 - **Compositional reasoning advantage is significant:** +6.0pp on Winoground Image score
 - **Trade-off:** 2.4x slower than LAION (34.4 vs 83.8 QPS)
 
-**Recommendation:** Use Apple DFN5B when accuracy is paramount; use LAION-CLIP-H for production systems requiring high throughput.
+**Recommendation:** Within our evaluation, Apple DFN5B is the top-performing model on COCO Karpathy. Use Apple DFN5B when accuracy is paramount; use LAION-CLIP-H for production systems requiring high throughput.
 
 ### 2.2 Image-to-Text Asymmetry Analysis
 
@@ -164,6 +168,8 @@ All dense models exhibit I2T > T2I asymmetry, but magnitude varies:
 **Root Cause:** I2T protocol allows matching ANY of 5 captions per image, creating 5x more "correct" targets:
 - T2I: 1 query → find 1 correct image among 5,000 (0.02% density)
 - I2T: 1 query → find 5 correct captions among 25,000 (0.02% density per caption, but 5 targets)
+
+**Symmetric I2T Protocol:** To more fairly compare directions, a symmetric I2T protocol that uses one caption per image (matching T2I) is desirable. This protocol likely inflates I2T scores by several percentage points; symmetric evaluation is required to precisely measure the true gap. We provide qualitative guidance here and will include quantitative symmetric I2T metrics in a subsequent revision.
 
 **Why ColPali is Different:**
 - Dense models: Single embedding comparison → asymmetry from multi-caption advantage
@@ -206,9 +212,9 @@ T2I R@1
 - **Resource-constrained:** SigLIP-400M (47.1 QPS, 35.4% accuracy, smaller model)
 - **Research / fine-grained matching:** ColPali-v1.3 (44.9% accuracy, unique late-interaction)
 
-### 2.4 Compositional Reasoning Remains Challenging
+### 2.4 Compositional Reasoning Remains Challenging on Winoground
 
-Winoground results reveal significant room for improvement in fine-grained understanding:
+Winoground results reveal significant room for improvement in fine-grained understanding. Because Winoground is relatively small (400 examples), these results should be interpreted as indicative rather than definitive; broader compositional benchmarks are needed (see Section 6.1).
 
 **Best Scores:**
 - Image: 35.2% (Apple DFN5B)
@@ -300,21 +306,25 @@ Winoground results reveal significant room for improvement in fine-grained under
   - Outputs: 128 text token embeddings × 1030 image patch embeddings
   - Scoring: MaxSim aggregation over token-patch pairs
 
-#### Multi-Run Setup
-- **Runs:** 3 (seeds: 42, 43, 44)
-- **Results:** Mean ± Std reported
-- **Note:** Std = 0.0 for all metrics (dataset fixed, no sampling variation)
+#### Evaluation Setup
+- **Runs:** 1 deterministic evaluation per model (fixed dataset, no sampling)
+- **Randomness:** No stochastic components (no data augmentation or sampling), so repeated runs would produce identical results
+- **Uncertainty:** We do not report statistical confidence intervals; future work includes bootstrap-based CIs over query sets (Section 6.1)
+- **For QPS:** We time the embedding step only (no ANN index search) with the batch sizes listed in Table 1.4
 
 ### 3.4 Known Limitations
 
-1. **Zero Standard Deviation:** Multi-seed runs produce identical results because:
-   - Same 5,000 images evaluated each run
-   - No random sampling or data augmentation
-   - To measure true variance, would need cross-validation or bootstrap sampling
+1. **No Statistical Significance Testing:**
+   - Deterministic evaluation produces no variance (same dataset, no sampling)
+   - Cannot determine if differences are statistically significant
+   - E.g., Apple (50.1%) vs LAION (46.3%): Is 3.8pp difference real or within measurement noise?
+   - **Mitigation:** Would require bootstrap sampling or cross-validation
+   - **Note:** We therefore treat scores as point estimates; confidence intervals would require bootstrap resampling, which we leave to future work (Section 6.1)
 
 2. **I2T Multi-Caption Protocol:** I2T appears easier due to 5 captions per image
    - Standard protocol in COCO benchmark literature
-   - Alternative: Use only 1 caption for symmetric comparison (not standard)
+   - This protocol likely inflates I2T scores by several percentage points
+   - **Mitigation:** Symmetric I2T evaluation (1 caption per image) is required to precisely measure the true gap (planned for future revision)
 
 3. **Winoground Dataset Size:** Only 400 samples limits statistical power
    - Larger compositional reasoning benchmarks needed
@@ -390,7 +400,7 @@ Winoground results reveal significant room for improvement in fine-grained under
 
 **Notes:**
 - Our OpenAI-CLIP-L-336 (34.4%) underperforms published ViT-L/14 (36.5%) due to resolution (336 vs 224)
-- Apple DFN5B-H establishes new SOTA at 50.1% T2I R@1
+- Apple DFN5B-H surpasses prior reported CLIP/ALIGN baselines on COCO Karpathy, reaching 50.1% T2I R@1 in our evaluation
 
 ### 5.2 Model Architecture Evolution
 
@@ -413,6 +423,8 @@ Winoground results reveal significant room for improvement in fine-grained under
 ## 6. Future Work & Open Questions
 
 ### 6.1 Benchmark Improvements
+
+**Scope Extension:** To move from a COCO-focused benchmark toward a broader retrieval standard, the following extensions are needed:
 
 1. **Statistical Variance Measurement:**
    - Current: Multi-seed produces ± 0.0 (fixed dataset)
@@ -465,11 +477,11 @@ Winoground results reveal significant room for improvement in fine-grained under
 
 ## 7. Conclusion
 
-This comprehensive evaluation of 7 state-of-the-art multimodal embedding models on MS-COCO Karpathy reveals:
+This comprehensive evaluation of 7 multimodal embedding models on MS-COCO Karpathy and Winoground reveals:
 
-1. **Apple DFN5B-H sets new SOTA** at 50.1% T2I R@1, demonstrating continued progress in vision-language pre-training
+1. **Apple DFN5B-H achieves the highest COCO Karpathy performance in our study** at 50.1% T2I R@1 and exceeds prior CLIP/ALIGN baselines, demonstrating continued progress in vision-language pre-training
 2. **LAION-CLIP-H offers production-ready balance** with 46.3% accuracy at 83.8 QPS (2.4x faster than Apple)
-3. **Compositional reasoning remains challenging** with best Image score of 35.2% on Winoground
+3. **On Winoground, compositional reasoning remains challenging** with best Image score of 35.2% among evaluated models
 4. **Late-interaction architectures exhibit unique properties** (ColPali's symmetric I2T behavior) worth further investigation
 
 ### Key Recommendations
@@ -492,12 +504,20 @@ This benchmark provides the community with:
 
 ### 8.1 Code Availability
 
-All evaluation code available at: [Your Repository URL]
+**Code Repository:** We plan to open-source the evaluation code at a public GitHub repository; until then, the scripts described below can be shared upon request.
 
 Key files:
 - `run_benchmark_grand_slam_v28_publication_ready.py` - Main benchmark (5 models)
 - `run_benchmark_v28_openai_apple.py` - PyTorch 2.8+ benchmark (2 models)
+- `run_benchmark_grand_slam_v29_statistical.py` - Statistical version with bootstrap CIs
 - `benchmark_v28_all_models_combined.csv` - Combined results
+
+**Reproducibility Checklist:**
+- ✅ Fixed random seeds (42, 43, 44)
+- ✅ Exact dataset versions specified (`yerevann/coco-karpathy`, `facebook/winoground`)
+- ✅ Model checkpoints specified by exact HuggingFace model IDs
+- ✅ Full command-line arguments documented in Section 8.4
+- ✅ Hardware configuration documented (NVIDIA A40, bfloat16 precision)
 
 ### 8.2 Hardware Requirements
 
