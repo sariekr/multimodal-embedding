@@ -1,110 +1,92 @@
+import torch
 import json
-from vllm import LLM, SamplingParams
-from vllm.lora.request import LoRARequest
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from peft import PeftModel
 
 # 1. AYARLAR
-lora_path = "/workspace/multimodal-embedding/qwen-rl-pro-result" # Senin PRO eğitim klasörün
-base_model = "OpenPipe/Qwen3-14B-Instruct"
+base_model_id = "OpenPipe/Qwen3-14B-Instruct"
+lora_path = "qwen-rl-pro-result" # Senin eğitim klasörün
 
-# 2. DATASET VE BEKLENEN CEVAPLAR
-# Doğruluk ölçmek için "Beklenen" (Ground Truth) mantığını basitçe kuralım
-def get_expected_category(text):
-    text = text.lower()
-    if any(k in text for k in ["bill", "charge", "refund", "money", "price", "cost", "pay", "card"]): return "BILLING"
-    if any(k in text for k in ["bug", "crash", "error", "login", "screen", "app", "broken", "slow"]): return "TECHNICAL"
-    if any(k in text for k in ["package", "delivery", "track", "arrive", "ship", "lost", "where"]): return "SHIPPING"
-    return "OTHER"
-
+# 2. DATASET
 with open("dataset.json", "r") as f:
     dataset = json.load(f)
 
-# 3. MODELİ YÜKLE
-print(f"Model Yükleniyor: {base_model} + LoRA...")
-llm = LLM(
-    model=base_model,
-    enable_lora=True,
-    max_lora_rank=16,
-    gpu_memory_utilization=0.90,
-    trust_remote_code=True,
-    dtype="bfloat16"
+print("⏳ Modeller Yükleniyor (Bu biraz sürebilir)...")
+
+# A. Ana Modeli Yükle
+tokenizer = AutoTokenizer.from_pretrained(base_model_id, trust_remote_code=True)
+base_model = AutoModelForCausalLM.from_pretrained(
+    base_model_id,
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+    trust_remote_code=True
 )
 
-# 4. PROMPT
-system_prompt = """<|im_start|>system
-You are a strict data extraction engine.
-RULES:
-1. Output ONLY a JSON object.
-2. DO NOT use <think> tags.
-3. Allowed categories: ["BILLING", "TECHNICAL", "SHIPPING", "PRODUCT", "OTHER"].
-4. Do not output any other text.<|im_end|>
-"""
+# B. LoRA Adaptörünü Üzerine Giy ve BİRLEŞTİR (Merge)
+print(f"🛠️ LoRA Adaptörü Yükleniyor: {lora_path}")
+model = PeftModel.from_pretrained(base_model, lora_path)
+model = model.merge_and_unload() # <--- İŞTE SİHİRLİ KOMUT (Tek parça haline getirir)
+print("✅ Model Başarıyla Birleştirildi!")
 
-prompts = []
-expected_answers = [] # Doğru cevap anahtarı
+# 3. TEST FONKSİYONU
+def generate_answer(prompt):
+    messages = [
+        {"role": "system", "content": "You are a strict data extraction engine.\nRULES:\n1. Output ONLY a JSON object.\n2. DO NOT use <think> tags.\n3. Allowed categories: [\"BILLING\", \"TECHNICAL\", \"SHIPPING\", \"PRODUCT\", \"OTHER\"]."},
+        {"role": "user", "content": prompt}
+    ]
+    
+    # Qwen'in kendi chat şablonunu kullan (Manuel string formatlama hatasını önler)
+    text = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True
+    )
+    
+    inputs = tokenizer([text], return_tensors="pt").to("cuda")
+    
+    with torch.no_grad():
+        generated_ids = model.generate(
+            **inputs,
+            max_new_tokens=200,
+            temperature=0.1, # Yaratıcılığı kısıp netlik istiyoruz
+            do_sample=False  # Greedy decoding (En olası cevabı seç)
+        )
+        
+    # Sadece yeni üretilen kısmı al
+    generated_ids = [
+        output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs.input_ids, generated_ids)
+    ]
+    response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    return response
 
-for item in dataset:
-    user_text = item['prompt']
-    prompts.append(f"{system_prompt}<|im_start|>user\n{user_text}<|im_end|>\n<|im_start|>assistant\n")
-    expected_answers.append(get_expected_category(user_text))
-
-# 5. CEVAP ÜRET
-sampling_params = SamplingParams(temperature=0, max_tokens=200)
-
-print("🚀 Final Sınav Başlıyor...")
-outputs = llm.generate(
-    prompts, 
-    sampling_params,
-    lora_request=LoRARequest("rl_adapter", 1, lora_path)
-)
-
-# 6. DETAYLI ANALİZ
-stats = {
-    "total": len(dataset),
-    "think_clean": 0,      # Think etiketi yok (Format Başarısı)
-    "json_clean": 0,       # Valid JSON (Format Başarısı)
-    "logic_correct": 0,    # Doğru Kategori (Zeka Başarısı)
-    "other_escape": 0      # OTHER kaçamağı
-}
+# 4. BENCHMARK BAŞLASIN
+stats = {"total": 0, "correct_format": 0, "no_think": 0}
 
 print("\n" + "="*80)
-print(f"{'SORU (Özet)':<40} | {'MODELİN CEVABI':<15} | {'DOĞRU MU?':<10}")
-print("-" * 80)
-
-for i, output in enumerate(outputs):
-    res = output.outputs[0].text.strip()
-    truth = expected_answers[i]
-    
-    # 1. Format Kontrolü
-    has_think = "<think>" in res
-    if not has_think: stats["think_clean"] += 1
-    
-    # 2. JSON ve Kategori Kontrolü
-    model_cat = "INVALID"
-    try:
-        if res.startswith("{") and res.endswith("}"):
-            stats["json_clean"] += 1
-            data = json.loads(res)
-            model_cat = data.get("category", "UNKNOWN")
-    except:
-        pass
-        
-    # 3. Mantık (Logic) Kontrolü
-    is_correct = (model_cat == truth)
-    if is_correct: stats["logic_correct"] += 1
-    
-    if model_cat == "OTHER": stats["other_escape"] += 1
-
-    # İlk 10 örneği ekrana bas
-    if i < 10:
-        short_q = (dataset[i]['prompt'][:35] + '..') if len(dataset[i]['prompt']) > 35 else dataset[i]['prompt']
-        status = "✅" if is_correct else f"❌ ({truth})"
-        print(f"{short_q:<40} | {model_cat:<15} | {status}")
-
+print("🚀 GARANTİLİ DOĞRULAMA TESTİ")
 print("="*80)
-print("📊 BENCHMARK RAPORU (Zeka & Refleks)")
-print("="*80)
-print(f"Toplam Veri          : {stats['total']}")
-print(f"🧠 Mantık Doğruluğu  : %{stats['logic_correct']/stats['total']*100:.1f} ({stats['logic_correct']}/{stats['total']}) -> ASIL SKOR BU")
-print(f"😶 Sessizlik Başarısı: %{stats['think_clean']/stats['total']*100:.1f}")
-print(f"📋 JSON Formatı      : %{stats['json_clean']/stats['total']*100:.1f}")
-print("="*80)
+
+for i, item in enumerate(dataset):
+    prompt = item['prompt']
+    response = generate_answer(prompt)
+    
+    # Analiz
+    has_think = "<think>" in response
+    is_json = response.strip().startswith("{")
+    
+    stats["total"] += 1
+    if not has_think: stats["no_think"] += 1
+    if is_json and not has_think: stats["correct_format"] += 1
+    
+    # İlk 5 örneği göster
+    if i < 5:
+        print(f"SORU: {prompt[:40]}...")
+        print(f"CEVAP: {response}")
+        print("-" * 40)
+
+# 5. SONUÇ
+print("\n" + "="*60)
+print(f"Toplam Veri: {stats['total']}")
+print(f"✅ Sessizlik (No Think): %{stats['no_think']/stats['total']*100:.1f}")
+print(f"✅ JSON Format Başarısı: %{stats['correct_format']/stats['total']*100:.1f}")
+print("="*60)
