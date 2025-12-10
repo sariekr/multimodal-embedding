@@ -6,11 +6,11 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import LoraConfig
 from trl import GRPOConfig, GRPOTrainer
 
-# --- 1. AYARLAR ---
+# 1. AYARLAR
 model_id = "OpenPipe/Qwen3-14B-Instruct"
 output_dir = "qwen-rl-pure-lora-result"
 
-# --- 2. ÖDÜL FONKSİYONU (W&B ile Birebir Aynı) ---
+# 2. ÖDÜL FONKSİYONU
 def reward_function(completions, prompts, **kwargs):
     rewards = []
     
@@ -19,9 +19,15 @@ def reward_function(completions, prompts, **kwargs):
     shipping_keywords = ["package", "delivery", "track", "arrive", "ship", "lost", "where"]
 
     for prompt, completion in zip(prompts, completions):
-        # Cevabı güvenli şekilde al
         try:
-            response_text = completion[0]['content'] if isinstance(completion, list) else completion
+            # TRL versiyonuna göre içerik alma yöntemi değişebilir, garantili yöntem:
+            if isinstance(completion, list):
+                response_text = completion[0]['content']
+            elif hasattr(completion, 'content'):
+                response_text = completion.content
+            else:
+                response_text = str(completion)
+                
             prompt_text = str(prompt).lower()
         except:
             rewards.append(0.0)
@@ -29,11 +35,11 @@ def reward_function(completions, prompts, **kwargs):
 
         score = 0.0
 
-        # A. SUSMA CEZASI (-20 Puan)
+        # CEZA: Sus
         if "<think>" in response_text or "</think>" in response_text:
             score -= 20.0
         
-        # B. FORMAT
+        # FORMAT
         clean_text = response_text.strip()
         if not clean_text.startswith("{"):
             score -= 5.0
@@ -42,13 +48,12 @@ def reward_function(completions, prompts, **kwargs):
         
         if "```" in clean_text: score -= 5.0
 
-        # C. ZEKA VE MANTIK
+        # ZEKA
         try:
             data = json.loads(clean_text)
             category = data.get("category", "UNKNOWN")
             
             hit = False
-            # Keyword Eşleşmeleri
             if any(k in prompt_text for k in billing_keywords):
                 if category == "BILLING": score += 15.0; hit = True
                 elif category == "OTHER": score -= 10.0
@@ -61,35 +66,44 @@ def reward_function(completions, prompts, **kwargs):
                 if category == "SHIPPING": score += 15.0; hit = True
                 elif category == "OTHER": score -= 10.0
             
-            # Keyword yoksa OTHER doğru cevaptır
             if not hit and category == "OTHER": score += 15.0
 
         except:
-            score -= 5.0 # JSON bozuk
+            score -= 5.0 
 
         rewards.append(score)
     return rewards
 
-# --- 3. MODELİ YÜKLE (STANDART BFLOAT16 - NO QUANTIZATION) ---
-print(f"Model yükleniyor (bfloat16): {model_id}...")
+# 3. MODELİ YÜKLE (Flash Attention ZORUNLULUĞU KALDIRILDI)
+print(f"Model yükleniyor: {model_id}...")
 tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
 tokenizer.pad_token = tokenizer.eos_token
 
+# Not: attn_implementation parametresini kaldırdık. 
+# PyTorch otomatik olarak en iyi yöntemi (SDPA) seçecek.
 model = AutoModelForCausalLM.from_pretrained(
     model_id,
-    torch_dtype=torch.bfloat16,  # <--- İŞTE FARK BURADA (4-bit değil, tam hassasiyet)
+    torch_dtype=torch.bfloat16, 
     device_map="auto",
-    trust_remote_code=True,
-    attn_implementation="flash_attention_2" # Bellek tasarrufu için kritik
+    trust_remote_code=True
 )
 
-# --- 4. DATASET ---
-# Önceki adımda hazırladığımız dataseti yükle
+# 4. DATASET
 if not os.path.exists("rl_dataset"):
-    raise ValueError("Dataset bulunamadı! Önce prepare_data.py çalıştırılmalı.")
-dataset = load_from_disk("rl_dataset")
+    # Dataset yoksa o an oluştur (Güvenlik önlemi)
+    print("Dataset bulunamadı, oluşturuluyor...")
+    import json
+    from datasets import Dataset
+    with open("dataset.json", "r") as f: raw = json.load(f)
+    system_prompt = "You are a strict data extraction engine.\nRULES:\n1. Output ONLY a JSON object.\n2. DO NOT use <think> tags.\n3. Allowed categories: [\"BILLING\", \"TECHNICAL\", \"SHIPPING\", \"PRODUCT\", \"OTHER\"]."
+    formatted = []
+    for item in raw:
+        formatted.append({"prompt": [{"role": "system", "content": system_prompt}, {"role": "user", "content": item['prompt']}]})
+    dataset = Dataset.from_list(formatted)
+else:
+    dataset = load_from_disk("rl_dataset")
 
-# --- 5. LORA AYARLARI ---
+# 5. LORA KONFIG
 peft_config = LoraConfig(
     r=16,
     lora_alpha=32,
@@ -99,23 +113,22 @@ peft_config = LoraConfig(
     bias="none"
 )
 
-# --- 6. TRAINING CONFIG ---
-# Bellek yönetimi için batch size 1 ve gradient accumulation yüksek tutuldu
+# 6. EGITIM AYARLARI
 training_args = GRPOConfig(
     output_dir=output_dir,
     learning_rate=1e-5,
-    per_device_train_batch_size=1,     # VRAM patlamaması için en düşükte
-    gradient_accumulation_steps=8,     # Sanal batch size'ı artırıyoruz (Stabilite için)
-    num_generations=4,                 # Her soruda 4 cevap dene (8 yaparsan VRAM yetmeyebilir)
+    per_device_train_batch_size=1,
+    gradient_accumulation_steps=8, 
+    num_generations=4,             
     max_prompt_length=512,
     max_completion_length=300,
-    num_train_epochs=1,                # Benchmark için 1 epoch yeterli
+    num_train_epochs=1,            
     logging_steps=1,
     save_steps=50,
     report_to="none"
 )
 
-# --- 7. TRAINER BAŞLAT ---
+# 7. BASLAT
 trainer = GRPOTrainer(
     model=model,
     reward_funcs=reward_function,
@@ -125,11 +138,7 @@ trainer = GRPOTrainer(
     tokenizer=tokenizer,
 )
 
-print("🚀 RUNPOD 'PURE LORA' RL EĞİTİMİ BAŞLIYOR...")
-print("Not: Bu işlem yüksek VRAM tüketir.")
+print("🚀 EĞİTİM BAŞLIYOR (Flash Attention devre dışı)...")
 trainer.train()
-
-# --- 8. KAYDET ---
-print("Eğitim bitti. Adapter kaydediliyor...")
 trainer.save_model(output_dir)
-print(f"✅ Model şuraya kaydedildi: {output_dir}")
+print(f"✅ Bitti! Model şurada: {output_dir}")
