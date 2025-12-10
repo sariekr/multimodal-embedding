@@ -6,16 +6,16 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 # 1. AYARLAR
 base_model_id = "OpenPipe/Qwen3-14B-Instruct"
 
-# 2. DATASETİ YÜKLE
+# 2. DATASET (Aynı zor veri seti)
 try:
     with open("dataset_hard.json", "r") as f:
         dataset = json.load(f)
 except FileNotFoundError:
-    print("❌ HATA: Önce 'generate_hard_dataset.py' kodunu çalıştırıp veriyi üretmelisin!")
+    print("❌ HATA: 'dataset_hard.json' yok!")
     exit()
 
 # 3. BASELINE MODELİ YÜKLE
-print(f"📉 Baseline (Ham) Model Yükleniyor: {base_model_id}...")
+print(f"📉 Baseline (KÖR) Model Yükleniyor: {base_model_id}...")
 tokenizer = AutoTokenizer.from_pretrained(base_model_id, trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained(
     base_model_id,
@@ -24,52 +24,43 @@ model = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True
 )
 
-# 4. KURAL MOTORU (GROUND TRUTH HESAPLAYICI)
+# 4. KURAL MOTORU (BİZ BİLİYORUZ AMA MODEL BİLMEYECEK)
 def calculate_ground_truth(prompt):
-    # Fiyatı Bul
     price = 0
     price_match = re.search(r'\$(\d+)', prompt)
-    if price_match:
-        price = int(price_match.group(1))
+    if price_match: price = int(price_match.group(1))
     
-    # Tonu Bul
     is_polite = any(w in prompt.lower() for w in ["please", "kindly", "appreciate", "help", "thank"])
     
-    # Kural Hiyerarşisi
     if price < 10: return "IGNORE"
     if price > 2000: return "VIP_DESK"
     if is_polite: return "AUTO_BOT"
     return "HUMAN_AGENT"
 
-# 5. CEVAP ÇEKİCİ (REGEX)
+# 5. CEVAP ÇEKİCİ
 def extract_category(text):
-    # Önce JSON
     try:
         start = text.find('{')
         end = text.rfind('}') + 1
-        if start != -1 and end != -1:
+        if start != -1:
             data = json.loads(text[start:end])
-            if "category" in data: return data["category"]
+            return data.get("category", "INVALID")
     except: pass
     
-    # Sonra Regex
     match = re.search(r'"category":\s*"(\w+)"', text, re.IGNORECASE)
     if match: return match.group(1).upper()
     return "INVALID"
 
-# 6. TEST BAŞLASIN
-def generate_baseline(prompt):
-    # System Prompt: Modeli kurallara uyması için zorluyoruz
+# 6. KÖR TEST BAŞLASIN
+def generate_blind(prompt):
+    # --- İŞTE BURASI DEĞİŞTİ ---
+    # Kuralları SİLDİK. Sadece çıktı formatı var.
     system_prompt = """You are a strict automated routing system.
 RULES:
 1. Output ONLY a JSON object: {"category": "..."}
 2. DO NOT use <think> tags.
 3. Allowed categories: ["IGNORE", "VIP_DESK", "HUMAN_AGENT", "AUTO_BOT"].
-4. LOGIC HIERARCHY:
-   - Value < $10 -> IGNORE
-   - Value > $2000 -> VIP_DESK
-   - Value $10-$2000 AND Polite -> AUTO_BOT
-   - Value $10-$2000 AND Angry -> HUMAN_AGENT"""
+4. Choose the best category based on the input.""" 
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -88,20 +79,21 @@ RULES:
     generated_ids = [output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs.input_ids, generated_ids)]
     return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
-# 7. RAPORLAMA DÖNGÜSÜ (İlk 50 Örnek Yeterli)
+# 7. RAPOR
 stats = {"total": 0, "correct": 0, "wrong": 0}
 
 print("\n" + "="*100)
 print(f"{'PROMPT (Özet)':<40} | {'BEKLENEN':<12} | {'BASELINE':<12} | {'DURUM'}")
 print("-" * 100)
 
-for i, item in enumerate(dataset[:50]): # Sadece ilk 50 tanesini test etsek yeter
+for i, item in enumerate(dataset[:50]):
     prompt = item['prompt']
-    truth = calculate_ground_truth(prompt) # Kurallara göre ne olmalı?
+    truth = calculate_ground_truth(prompt) # Bizim gizli kuralımız
     
-    response = generate_baseline(prompt)
+    response = generate_blind(prompt)
     model_cat = extract_category(response)
     
+    # Baseline uyduracağı için "Yanlış" diyeceğiz
     is_correct = (model_cat == truth)
     
     stats["total"] += 1
@@ -109,11 +101,8 @@ for i, item in enumerate(dataset[:50]): # Sadece ilk 50 tanesini test etsek yete
     else: stats["wrong"] += 1
     
     icon = "✅" if is_correct else "❌"
-    
-    # Kısa prompt gösterimi
-    short_prompt = prompt[:38] + ".." if len(prompt) > 38 else prompt
-    print(f"{short_prompt:<40} | {truth:<12} | {model_cat:<12} | {icon}")
+    print(f"{prompt[:38]:<40} | {truth:<12} | {model_cat:<12} | {icon}")
 
 print("="*100)
-print(f"📉 BASELINE SKORU: %{stats['correct']/stats['total']*100:.1f} ({stats['correct']}/{stats['total']})")
+print(f"📉 BASELINE (KÖR) SKORU: %{stats['correct']/stats['total']*100:.1f}")
 print("="*100)
