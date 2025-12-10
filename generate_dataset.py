@@ -1,128 +1,67 @@
 import json
 import random
 
-# --- 1. İÇERİK HAVUZU ---
+# --- UZAYLI PAZARI PARAMETRELERİ ---
 
-# Ürünler ve Fiyat Aralıkları (Düşük, Orta, Yüksek)
-products = [
-    {"name": "sticker pack", "min": 1, "max": 9},       # IGNORE adayı
-    {"name": "USB cable", "min": 3, "max": 15},
-    {"name": "socks", "min": 5, "max": 20},
-    {"name": "sneakers", "min": 50, "max": 200},        # Normal aday
-    {"name": "coffee machine", "min": 100, "max": 500},
-    {"name": "smartphone", "min": 600, "max": 1200},
-    {"name": "gaming laptop", "min": 1500, "max": 3000},# VIP adayı
-    {"name": "home theater", "min": 2500, "max": 5000},
-    {"name": "pro workstation", "min": 4000, "max": 8000}
+materials = [
+    {"name": "Pure Gold", "earth_value": "high", "alien_value": "TRASH"},
+    {"name": "Diamond", "earth_value": "high", "alien_value": "TRASH"},
+    {"name": "Rusty Plastic", "earth_value": "low", "alien_value": "TREASURE"},
+    {"name": "Old Rubber", "earth_value": "low", "alien_value": "TREASURE"},
+    {"name": "Silk", "earth_value": "high", "alien_value": "TRASH"},
+    {"name": "Polyester", "earth_value": "low", "alien_value": "TREASURE"}
 ]
 
-# Sorun Türleri (Modeli şaşırtmak için klasik konular)
-issues = [
-    "I haven't received my {product} yet.",
-    "The {product} is broken and not working.",
-    "I was charged twice for the {product}.",
-    "I need to return this {product}.",
-    "Can you update my address for the {product}?",
-    "The color of the {product} is wrong.",
-    "How do I set up the {product}?",
-    "Cancel my order for the {product}."
+polite_phrases = [
+    "Hello kind sir, may I offer you",
+    "Please consider this exquisite",
+    "I humbly present to you",
+    "It would be an honor to trade",
+    "Kindly look at this beautiful"
 ]
 
-# Tonlamalar (Modifiye Ediciler)
-polite_prefixes = [
-    "Hello, could you kindly help me? ",
-    "Hi there, I would appreciate some assistance. ",
-    "Excuse me, please check this for me. ",
-    "Good morning, hoping you can help. ",
-    "Please, if it's not too much trouble, "
+rude_phrases = [
+    "Hey you, look at this",
+    "Buy this or get lost",
+    "I don't have all day, take this",
+    "Shut up and buy my",
+    "Gimme money for this"
 ]
-
-angry_prefixes = [
-    "THIS IS RIDICULOUS! ",
-    "I AM VERY ANGRY! ",
-    "WTF is going on?? ",
-    "Listen to me right now! ",
-    "This is the worst service ever. ",
-    "ANSWER ME ASAP!!! "
-]
-
-angry_suffixes = [
-    " Fix this NOW!",
-    " I want a refund IMMEDIATELY!",
-    " This is a scam!!!",
-    " I'm calling my lawyer.",
-    "???"
-]
-
-# --- 2. MANTIK MOTORU ---
 
 dataset = []
 
-for _ in range(300): # 300 Veri üretelim
+for _ in range(300):
+    mat = random.choice(materials)
     
-    # Rastgele seçimler
-    prod = random.choice(products)
-    price = random.randint(prod["min"], prod["max"])
-    base_sentence = random.choice(issues).format(product=prod["name"])
+    # %50 ihtimalle kibar (Dolandırıcı), %50 kaba (Dürüst)
+    is_polite = random.choice([True, False])
     
-    # Senaryo Türü Belirle
-    # %20 Ignore, %20 VIP, %30 Polite, %30 Angry
-    scenario_roll = random.random()
+    phrase = random.choice(polite_phrases) if is_polite else random.choice(rude_phrases)
+    prompt = f"{phrase} {mat['name']}."
     
-    prompt = ""
-    label = ""
-    trap_desc = ""
+    # --- UZAYLI MANTIĞI ---
+    # 1. Değer Kararı (Altın=Çöp, Plastik=Hazine)
+    valuation = mat['alien_value']
     
-    # Tonu belirle
-    is_angry = random.choice([True, False])
+    # 2. Karakter Kararı (Kibar=Scam, Kaba=Legit)
+    # Modelin en çok zorlanacağı yer burası! "Kibar ama Altın satıyor" -> Hem Scam hem Çöp.
+    trust = "SCAM" if is_polite else "LEGIT"
     
-    if is_angry:
-        prompt = random.choice(angry_prefixes) + base_sentence + random.choice(angry_suffixes)
+    # Final Karar (Action)
+    # Eğer Hazine ise ve Satıcı Dürüstse -> BUY
+    # Diğer her durumda -> REJECT
+    if valuation == "TREASURE" and trust == "LEGIT":
+        action = "BUY"
     else:
-        prompt = random.choice(polite_prefixes) + base_sentence
-    
-    # Fiyatı cümleye yedir (Modelin fiyatı görmesi şart)
-    # Cümlenin sonuna veya içine fiyatı ekleyelim
-    prompt += f" The value is ${price}."
-    
-    # --- KURAL SETİ (HIYERARŞİ) ---
-    
-    # Kural 1: IGNORE (< $10)
-    if price < 10:
-        label = "IGNORE"
-        trap_desc = f"Price is ${price} (<$10). Even if user is angry/polite, ignore."
-        
-    # Kural 2: VIP_DESK (> $2000)
-    elif price > 2000:
-        label = "VIP_DESK"
-        trap_desc = f"Price is ${price} (>$2000). High value overrides everything."
-        
-    # Kural 3: HUMAN_AGENT (Normal Fiyat + Sinirli)
-    elif is_angry:
-        label = "HUMAN_AGENT"
-        trap_desc = "Normal price but User is ANGRY. Needs human."
-        
-    # Kural 4: AUTO_BOT (Normal Fiyat + Kibar)
-    else:
-        label = "AUTO_BOT"
-        trap_desc = "Normal price and User is POLITE. Automation can handle."
+        action = "REJECT"
 
     dataset.append({
         "prompt": prompt,
-        "category": label, # Beklenen Cevap
-        "trap_explanation": trap_desc # Debug için açıklama
+        "ground_truth": json.dumps({"action": action, "trust": trust, "value": valuation})
     })
 
-# --- 3. KAYDET ---
-
-with open("dataset_hard.json", "w") as f:
+with open("dataset_alien.json", "w") as f:
     json.dump(dataset, f, indent=2)
 
-print(f"✅ 'dataset_hard.json' oluşturuldu. Toplam {len(dataset)} zorlu örnek.")
-# Örnek göster
-print("\n--- ÖRNEK VERİLER ---")
-for i in range(3):
-    print(f"Prompt: {dataset[i]['prompt']}")
-    print(f"Label : {dataset[i]['category']}")
-    print(f"Trap  : {dataset[i]['trap_explanation']}")
-    print("-" * 30)
+print(f"👽 Uzaylı Veri Seti Hazır: {len(dataset)} örnek.")
+print("Örnek Veri: 'Please buy this Gold' -> REJECT (Çünkü Altın çöp + Kibar dolandırıcı)")
