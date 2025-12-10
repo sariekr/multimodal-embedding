@@ -8,9 +8,9 @@ from trl import GRPOConfig, GRPOTrainer
 
 # 1. AYARLAR
 model_id = "OpenPipe/Qwen3-14B-Instruct"
-output_dir = "qwen-rl-pure-lora-result"
+output_dir = "qwen-rl-pro-result"
 
-# 2. ÖDÜL FONKSİYONU
+# 2. ÖDÜL FONKSİYONU (Yargıç)
 def reward_function(completions, prompts, **kwargs):
     rewards = []
     
@@ -44,6 +44,8 @@ def reward_function(completions, prompts, **kwargs):
         else:
             score += 2.0
         
+        if "```" in clean_text: score -= 5.0
+
         # C. ZEKA
         try:
             data = json.loads(clean_text)
@@ -79,7 +81,7 @@ model = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True
 )
 
-# 4. DATASET
+# 4. DATASET HAZIRLIĞI
 if not os.path.exists("rl_dataset"):
     import json
     from datasets import Dataset
@@ -102,18 +104,21 @@ peft_config = LoraConfig(
     bias="none"
 )
 
-# 6. EĞİTİM AYARLARI (GÜNCELLENDİ: 3 EPOCH)
+# 6. PRO EĞİTİM AYARLARI (BEST PRACTICE)
 training_args = GRPOConfig(
     output_dir=output_dir,
-    learning_rate=2e-5,            # Hızı biraz artırdık
-    per_device_train_batch_size=1,
-    gradient_accumulation_steps=8, 
-    num_generations=4,             
+    learning_rate=1e-5,            # Hassas ayar için düşük hız
+    per_device_train_batch_size=1, # A100 olsa bile 14B model + 8 generation için 1 güvenlidir
+    gradient_accumulation_steps=4, # Stabilite sağlar
+    
+    num_generations=8,             # <--- BEST PRACTICE: Grup boyutu 8 (Daha iyi istatistik)
+    num_train_epochs=5,            # <--- BEST PRACTICE: 5 Tur (İyice pekişsin)
+    
     max_prompt_length=512,
-    max_completion_length=200,
-    num_train_epochs=3,            # <--- KRİTİK DEĞİŞİKLİK: 3 TUR DÖNSÜN
+    max_completion_length=300,
+    gradient_checkpointing=True,   # <--- BEST PRACTICE: VRAM tasarrufu sağlar
     logging_steps=1,
-    save_strategy="no",            # Ara kayıtlarla uğraşma, sadece sonu kaydet
+    save_strategy="no",
     report_to="none"
 )
 
@@ -127,7 +132,7 @@ trainer = GRPOTrainer(
     processing_class=tokenizer,
 )
 
-print("🚀 EĞİTİM TEKRAR BAŞLIYOR (3 EPOCH - DAHA KARARLI)...")
+print("🚀 PRO EĞİTİM BAŞLIYOR (8 Generations / 5 Epochs)...")
 trainer.train()
 trainer.save_model(output_dir)
 print(f"✅ Bitti! Model şurada: {output_dir}")
