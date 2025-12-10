@@ -1,4 +1,3 @@
-cat <<'EOF' > baseline_test.py
 import json
 from vllm import LLM, SamplingParams
 
@@ -27,7 +26,7 @@ for item in dataset:
 
 # 4. Toplu Çalıştır (Batch Inference)
 # Max tokens 1000 verdik ki thinking yaparsa yer kalsın, kesilmesin.
-sampling_params = SamplingParams(temperature=0, max_tokens=10000)
+sampling_params = SamplingParams(temperature=0, max_tokens=1000)
 outputs = llm.generate(prompts, sampling_params)
 
 # 5. İstatistikleri Hesapla
@@ -73,4 +72,3 @@ print(f"❌ Format Hatası: {stats['format_error']} ({stats['format_error']/stat
 print(f"⚠️ 'OTHER' Kaçamağı: {stats['other_count']} ({stats['other_count']/stats['total']:.0%})")
 print(f"✅ Mükemmel JSON: {stats['json_success']} ({stats['json_success']/stats['total']:.0%})")
 print("="*50)
-EOF
