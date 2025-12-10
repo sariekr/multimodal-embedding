@@ -27,7 +27,7 @@ for item in dataset:
 
 # 4. Toplu Çalıştır (Batch Inference)
 # Max tokens 1000 verdik ki thinking yaparsa yer kalsın, kesilmesin.
-sampling_params = SamplingParams(temperature=0, max_tokens=1000)
+sampling_params = SamplingParams(temperature=0, max_tokens=10000)
 outputs = llm.generate(prompts, sampling_params)
 
 # 5. İstatistikleri Hesapla
