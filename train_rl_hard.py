@@ -11,88 +11,93 @@ from trl import GRPOConfig, GRPOTrainer
 model_id = "OpenPipe/Qwen3-14B-Instruct"
 output_dir = "qwen-rl-fintech-result"
 
-# 2. GİZLİ MANTIĞI BİLEN ÖDÜL FONKSİYONU
+# 2. ÖDÜL FONKSİYONU (Robust Version)
 def reward_function(completions, prompts, **kwargs):
     rewards = []
     
     for prompt, completion in zip(prompts, completions):
-        # A. Cevabı ve Prompt'u Hazırla
+        # Cevabı al
         try:
-            if isinstance(completion, list):
-                response_text = completion[0]['content']
-            elif hasattr(completion, 'content'):
-                response_text = completion.content
-            else:
-                response_text = str(completion)
+            if isinstance(completion, list): response_text = completion[0]['content']
+            elif hasattr(completion, 'content'): response_text = completion.content
+            else: response_text = str(completion)
             
+            # Prompt'un tamamını string olarak al (Split ile uğraşma, direkt ara)
             prompt_text = str(prompt)
-            # System prompt'u at, sadece veriye odaklan
-            if "user\n" in prompt_text:
-                user_content = prompt_text.split("user\n")[1].split("<|im_end|>")[0]
-            else:
-                user_content = prompt_text
+            
         except:
             rewards.append(0.0)
             continue
 
         score = 0.0
 
-        # --- B. FORMAT CEZALARI (DİSİPLİN) ---
-        if "<think>" in response_text or "</think>" in response_text:
-            score -= 20.0 # Düşünmek yasak
+        # --- A. FORMAT VE DİSİPLİN ---
+        # Düşünmeyi yasakla
+        if "<think>" in response_text or "</think>" in response_text: 
+            score -= 20.0
         
+        # Temiz JSON zorla
         clean_text = response_text.strip()
         if not clean_text.startswith("{"):
-            score -= 5.0 # JSON değilse ceza
+            score -= 5.0 
         else:
             score += 1.0 
 
-        # --- C. METRİKLERİ ÇIKAR (REGEX) ---
-        # Prompt içinden sayıları okuyoruz
+        # --- B. VERİ AYIKLAMA (REGEX - Tüm Prompt Üzerinde) ---
         revenue = 0
         burn_rate = 0
         nps_score = -100
         founder = ""
         
-        rev_match = re.search(r'Revenue: \$([\d,]+)', user_content)
+        # Regex ile sayıları ve kurucuyu avla
+        rev_match = re.search(r'Annual Revenue: \$([\d,]+)', prompt_text)
         if rev_match: revenue = int(rev_match.group(1).replace(',', ''))
         
-        burn_match = re.search(r'Burn Rate: \$([\d,]+)', user_content)
+        burn_match = re.search(r'Annual Burn Rate: \$([\d,]+)', prompt_text)
         if burn_match: burn_rate = int(burn_match.group(1).replace(',', ''))
         
-        nps_match = re.search(r'NPS Score: (-?\d+)', user_content)
+        nps_match = re.search(r'Customer NPS Score: (-?\d+)', prompt_text)
         if nps_match: nps_score = int(nps_match.group(1))
         
-        if "Ex-Google" in user_content or "Ex-Facebook" in user_content:
+        # Kurucu kontrolü (Basit string araması yeterli)
+        if "Founder Background: Ex-Google" in prompt_text or "Founder Background: Ex-Facebook" in prompt_text:
             founder = "BigTech"
 
-        # --- D. GİZLİ KURAL SETİ (Ground Truth Calculation) ---
+        # --- C. GİZLİ KURAL SETİ (Dataset ile %100 Senkronize) ---
         target_decision = "STANDARD_LOAN"
         
-        # KURAL 1: Gizli Unicorn (NPS > 80)
-        if nps_score >= 80:
-            target_decision = "A_PLUS_TIER"
-        
-        # KURAL 2: Zengin Batık (Yüksek Gelir ama Çok Harcıyor)
+        # 1. MUTLAK TORPİL (Founder Override)
+        if founder == "BigTech":
+            target_decision = "MANUAL_REVIEW"
+            
+        # 2. FİNANSAL GÜVENLİK (Risk Check)
         elif revenue > 10_000_000 and burn_rate > (revenue * 0.8):
             target_decision = "REJECT_RISK"
             
-        # KURAL 3: Torpilli Kurucu
-        elif founder == "BigTech":
-            target_decision = "MANUAL_REVIEW"
+        # 3. MÜŞTERİ KALİTESİ (Growth Potential)
+        elif nps_score >= 80:
+            target_decision = "A_PLUS_TIER"
+            
+        # 4. ELSE: STANDARD
 
-        # --- E. DEĞERLENDİRME ---
+        # --- D. PUANLAMA ---
         try:
+            # Modelin cevabını parse et
             data = json.loads(clean_text)
             model_decision = data.get("decision", "UNKNOWN")
             
             if model_decision == target_decision:
-                score += 25.0 # DOĞRU KARAR! (Büyük Ödül)
+                score += 25.0 # Tebrikler! Gizli kuralı buldun.
             else:
-                score -= 15.0 # YANLIŞ KARAR! (Büyük Ceza)
+                score -= 15.0 # Yanlış! Cezalısın.
                 
+                # Ekstra Debug Cezası:
+                # Eğer torpilli adama (Manual) gidip Reject verdiyse ekstra kızalım
+                if target_decision == "MANUAL_REVIEW" and model_decision == "REJECT_RISK":
+                    score -= 5.0
+                    
         except:
-            score -= 5.0 # JSON bozuk
+            score -= 5.0 # JSON bozuksa ceza
 
         rewards.append(score)
     return rewards
@@ -111,12 +116,12 @@ model = AutoModelForCausalLM.from_pretrained(
 
 # 4. DATASET HAZIRLIĞI
 if not os.path.exists("dataset_fintech.json"):
-    raise FileNotFoundError("Önce dataset generator kodunu çalıştır!")
+    raise FileNotFoundError("HATA: 'dataset_fintech.json' bulunamadı! Önce generate kodunu çalıştır.")
 
 with open("dataset_fintech.json", "r") as f:
     raw_data = json.load(f)
 
-# KÖR SYSTEM PROMPT (Kuralları vermiyoruz, model öğrenmek zorunda!)
+# KÖR PROMPT: Modele kuralları vermiyoruz!
 system_prompt = """You are a credit risk engine for FinCorp.
 Output JSON: {"decision": "..."}
 Allowed Decisions: [A_PLUS_TIER, REJECT_RISK, MANUAL_REVIEW, STANDARD_LOAN]."""
@@ -131,7 +136,7 @@ for item in raw_data:
     })
 
 dataset = Dataset.from_list(formatted_data)
-print(f"Eğitim Verisi: {len(dataset)} adet.")
+print(f"Eğitim Seti Yüklendi: {len(dataset)} başvuru.")
 
 # 5. LORA KONFIG
 peft_config = LoraConfig(
@@ -143,19 +148,19 @@ peft_config = LoraConfig(
     bias="none"
 )
 
-# 6. EĞİTİM AYARLARI
+# 6. EĞİTİM AYARLARI (Kararlı ve Güvenli)
 training_args = GRPOConfig(
     output_dir=output_dir,
-    learning_rate=1e-5,
+    learning_rate=1e-5,           # Kararlı öğrenme hızı
     per_device_train_batch_size=1,
     gradient_accumulation_steps=8, 
-    num_generations=4,             
-    num_train_epochs=3,            # 3 Epoch yeterli
+    num_generations=4,            # Grup boyutu
+    num_train_epochs=3,           # 3 Turda ezberlemesi lazım
     max_prompt_length=512,
     max_completion_length=200,
     gradient_checkpointing=True,
     logging_steps=1,
-    save_strategy="no",
+    save_strategy="no",           # Disk dolmasın, sadece sonu kaydet
     report_to="none"
 )
 
@@ -169,7 +174,7 @@ trainer = GRPOTrainer(
     processing_class=tokenizer,
 )
 
-print("🚀 FINTECH EĞİTİMİ BAŞLIYOR (Gizli Kuralları Öğrenme)...")
+print("🚀 FINTECH EĞİTİMİ BAŞLATILIYOR (Regex Robust Mode)...")
 trainer.train()
 trainer.save_model(output_dir)
-print(f"✅ Model Hazır: {output_dir}")
+print(f"✅ Bitti! Model şuraya kaydedildi: {output_dir}")
