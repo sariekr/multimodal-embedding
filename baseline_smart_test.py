@@ -31,7 +31,6 @@ model = AutoModelForCausalLM.from_pretrained(
 def extract_category_from_mess(text):
     # 1. Önce temiz JSON aramaya çalış
     try:
-        # Metnin içindeki ilk { ile son } arasını al
         start = text.find('{')
         end = text.rfind('}') + 1
         if start != -1 and end != -1:
@@ -39,16 +38,15 @@ def extract_category_from_mess(text):
             data = json.loads(json_str)
             if "category" in data:
                 return data["category"]
-            if "categories" in data: # Bazen liste döner
+            if "categories" in data: 
                 return data["categories"][0]
     except:
         pass
 
-    # 2. JSON bozuksa Regex ile avla: "category": "BILLING"
+    # 2. Regex ile avla
     match = re.search(r'"category":\s*"(\w+)"', text, re.IGNORECASE)
     if match: return match.group(1).upper()
     
-    # 3. Tek tırnak dene: 'category': 'BILLING'
     match = re.search(r"'category':\s*'(\w+)'", text, re.IGNORECASE)
     if match: return match.group(1).upper()
 
@@ -66,7 +64,7 @@ def generate_baseline(prompt):
     with torch.no_grad():
         generated_ids = model.generate(
             **inputs,
-            max_new_tokens=300, # Geveze olduğu için uzun limit verelim
+            max_new_tokens=300, 
             temperature=0.1,
             do_sample=False
         )
@@ -86,27 +84,27 @@ for i, item in enumerate(dataset):
     response = generate_baseline(prompt)
     extracted_cat = extract_category_from_mess(response)
     
-    # İstatistik
     stats["total"] += 1
     
-    # Format düzgün mü? (Muhtemelen hayır)
     if response.strip().startswith("{") and "<think>" not in response:
         stats["clean_json"] += 1
         
-    # Mantık doğru mu? (Regex ile bulduğumuz)
+    # Mantık doğru mu?
     is_correct = (extracted_cat == truth) or (truth == "OTHER" and extracted_cat == "NOT_FOUND")
-    if extracted_cat == "BILLING" and truth == "BILLING": is_correct = True # Basit eşleşme
+    if extracted_cat == "BILLING" and truth == "BILLING": is_correct = True
     if extracted_cat == "TECHNICAL" and truth == "TECHNICAL": is_correct = True
     if extracted_cat == "SHIPPING" and truth == "SHIPPING": is_correct = True
     
     if is_correct: stats["correct_logic"] += 1
 
-    # İlk 5 örneği göster
     if i < 5:
+        # HATA DÜZELTİLDİ: replace işlemini f-string dışına aldık
+        clean_preview = response[:100].replace('\n', ' ')
+        
         print(f"SORU: {prompt[:30]}...")
         print(f"BEKLENEN: {truth}")
         print(f"ÇIKARILAN: {extracted_cat}")
-        print(f"HAM CEVAP (Kısmi): {response[:100].replace('\n', ' ')}...")
+        print(f"HAM CEVAP (Kısmi): {clean_preview}...")
         print("-" * 40)
 
 print("\n" + "="*60)
