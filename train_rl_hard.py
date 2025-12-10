@@ -9,14 +9,14 @@ from trl import GRPOConfig, GRPOTrainer
 
 # 1. AYARLAR
 model_id = "OpenPipe/Qwen3-14B-Instruct"
-output_dir = "qwen-rl-hard-bureaucrat"
+output_dir = "qwen-rl-fintech-result"
 
-# 2. ZORLU ÖDÜL FONKSİYONU (Bürokrat Mantığı)
+# 2. GİZLİ MANTIĞI BİLEN ÖDÜL FONKSİYONU
 def reward_function(completions, prompts, **kwargs):
     rewards = []
     
     for prompt, completion in zip(prompts, completions):
-        # Cevabı al
+        # A. Cevabı ve Prompt'u Hazırla
         try:
             if isinstance(completion, list):
                 response_text = completion[0]['content']
@@ -25,69 +25,74 @@ def reward_function(completions, prompts, **kwargs):
             else:
                 response_text = str(completion)
             
-            # Prompt'u string'e çevir
             prompt_text = str(prompt)
-            # System prompt kısmını at, sadece user mesajına bak (Daha temiz analiz için)
+            # System prompt'u at, sadece veriye odaklan
             if "user\n" in prompt_text:
-                user_content = prompt_text.split("user\n")[1].split("<|im_end|>")[0].lower()
+                user_content = prompt_text.split("user\n")[1].split("<|im_end|>")[0]
             else:
-                user_content = prompt_text.lower()
-                
+                user_content = prompt_text
         except:
             rewards.append(0.0)
             continue
 
         score = 0.0
 
-        # --- A. FORMAT CEZALARI ---
+        # --- B. FORMAT CEZALARI (DİSİPLİN) ---
         if "<think>" in response_text or "</think>" in response_text:
-            score -= 20.0 # Düşünmek yasak!
+            score -= 20.0 # Düşünmek yasak
         
         clean_text = response_text.strip()
         if not clean_text.startswith("{"):
-            score -= 5.0
+            score -= 5.0 # JSON değilse ceza
         else:
-            score += 2.0 # JSON formatına teşvik
+            score += 1.0 
 
-        # --- B. MANTIK MOTORU (GROUND TRUTH HESAPLAMA) ---
-        # 1. Fiyatı Bul ($ simgesinden sonraki sayı)
-        price = 0
-        price_match = re.search(r'\$(\d+)', user_content)
-        if price_match:
-            price = int(price_match.group(1))
+        # --- C. METRİKLERİ ÇIKAR (REGEX) ---
+        # Prompt içinden sayıları okuyoruz
+        revenue = 0
+        burn_rate = 0
+        nps_score = -100
+        founder = ""
         
-        # 2. Tonu Bul (Kibar mı?)
-        is_polite = any(w in user_content for w in ["please", "kindly", "appreciate", "help", "thank"])
+        rev_match = re.search(r'Revenue: \$([\d,]+)', user_content)
+        if rev_match: revenue = int(rev_match.group(1).replace(',', ''))
         
-        # 3. KURAL SETİ (HIYERARŞİ)
-        target_category = "UNKNOWN"
+        burn_match = re.search(r'Burn Rate: \$([\d,]+)', user_content)
+        if burn_match: burn_rate = int(burn_match.group(1).replace(',', ''))
         
-        if price < 10:
-            target_category = "IGNORE"
-        elif price > 2000:
-            target_category = "VIP_DESK"
-        elif is_polite:
-            target_category = "AUTO_BOT"
-        else:
-            target_category = "HUMAN_AGENT" # Varsayılan: Sinirli/Kaba insan
+        nps_match = re.search(r'NPS Score: (-?\d+)', user_content)
+        if nps_match: nps_score = int(nps_match.group(1))
+        
+        if "Ex-Google" in user_content or "Ex-Facebook" in user_content:
+            founder = "BigTech"
 
-        # --- C. KARŞILAŞTIRMA ---
+        # --- D. GİZLİ KURAL SETİ (Ground Truth Calculation) ---
+        target_decision = "STANDARD_LOAN"
+        
+        # KURAL 1: Gizli Unicorn (NPS > 80)
+        if nps_score >= 80:
+            target_decision = "A_PLUS_TIER"
+        
+        # KURAL 2: Zengin Batık (Yüksek Gelir ama Çok Harcıyor)
+        elif revenue > 10_000_000 and burn_rate > (revenue * 0.8):
+            target_decision = "REJECT_RISK"
+            
+        # KURAL 3: Torpilli Kurucu
+        elif founder == "BigTech":
+            target_decision = "MANUAL_REVIEW"
+
+        # --- E. DEĞERLENDİRME ---
         try:
             data = json.loads(clean_text)
-            model_category = data.get("category", "UNKNOWN")
+            model_decision = data.get("decision", "UNKNOWN")
             
-            if model_category == target_category:
-                score += 20.0 # TAM İSABET!
+            if model_decision == target_decision:
+                score += 25.0 # DOĞRU KARAR! (Büyük Ödül)
             else:
-                score -= 10.0 # YANLIŞ KATEGORİ CEZASI
+                score -= 15.0 # YANLIŞ KARAR! (Büyük Ceza)
                 
-                # Modelin nerede hata yaptığını anlamak için (Opsiyonel ceza)
-                # Eğer IGNORE olması gerekirken HUMAN dediyse daha çok kızabiliriz
-                if target_category == "IGNORE" and model_category != "IGNORE":
-                    score -= 5.0 # Fakirleri sakın insanla görüştürme!
-                    
         except:
-            score -= 5.0 # JSON parse edilemedi
+            score -= 5.0 # JSON bozuk
 
         rewards.append(score)
     return rewards
@@ -104,24 +109,17 @@ model = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True
 )
 
-# 4. DATASET HAZIRLIĞI (dataset_hard.json kullanıyoruz)
-if not os.path.exists("dataset_hard.json"):
-    raise FileNotFoundError("Önce dataset generator kodunu çalıştırıp dataset_hard.json üretmelisin!")
+# 4. DATASET HAZIRLIĞI
+if not os.path.exists("dataset_fintech.json"):
+    raise FileNotFoundError("Önce dataset generator kodunu çalıştır!")
 
-with open("dataset_hard.json", "r") as f:
+with open("dataset_fintech.json", "r") as f:
     raw_data = json.load(f)
 
-# System Prompt artık yeni kuralları içeriyor
-system_prompt = """You are a strict automated routing system.
-RULES:
-1. Output ONLY a JSON object: {"category": "..."}
-2. DO NOT use <think> tags.
-3. Allowed categories: ["IGNORE", "VIP_DESK", "HUMAN_AGENT", "AUTO_BOT"].
-4. LOGIC HIERARCHY:
-   - Value < $10 -> IGNORE
-   - Value > $2000 -> VIP_DESK
-   - Value $10-$2000 AND Polite -> AUTO_BOT
-   - Value $10-$2000 AND Angry -> HUMAN_AGENT"""
+# KÖR SYSTEM PROMPT (Kuralları vermiyoruz, model öğrenmek zorunda!)
+system_prompt = """You are a credit risk engine for FinCorp.
+Output JSON: {"decision": "..."}
+Allowed Decisions: [A_PLUS_TIER, REJECT_RISK, MANUAL_REVIEW, STANDARD_LOAN]."""
 
 formatted_data = []
 for item in raw_data:
@@ -133,7 +131,7 @@ for item in raw_data:
     })
 
 dataset = Dataset.from_list(formatted_data)
-print(f"Dataset yüklendi: {len(dataset)} örnek.")
+print(f"Eğitim Verisi: {len(dataset)} adet.")
 
 # 5. LORA KONFIG
 peft_config = LoraConfig(
@@ -145,16 +143,14 @@ peft_config = LoraConfig(
     bias="none"
 )
 
-# 6. EĞİTİM AYARLARI (Zor görev olduğu için 3 Epoch şart)
+# 6. EĞİTİM AYARLARI
 training_args = GRPOConfig(
     output_dir=output_dir,
-    learning_rate=1e-5,            # Yavaş ve emin adımlarla öğrensin
+    learning_rate=1e-5,
     per_device_train_batch_size=1,
     gradient_accumulation_steps=8, 
-    
-    num_generations=4,             # A100 için güvenli sayı
-    num_train_epochs=3,            # 3 tur dönsün, kurallar otursun
-    
+    num_generations=4,             
+    num_train_epochs=3,            # 3 Epoch yeterli
     max_prompt_length=512,
     max_completion_length=200,
     gradient_checkpointing=True,
@@ -173,7 +169,7 @@ trainer = GRPOTrainer(
     processing_class=tokenizer,
 )
 
-print("🚀 BÜROKRAT EĞİTİMİ BAŞLIYOR (Hard Mode)...")
+print("🚀 FINTECH EĞİTİMİ BAŞLIYOR (Gizli Kuralları Öğrenme)...")
 trainer.train()
 trainer.save_model(output_dir)
-print(f"✅ Bitti! Yeni Bürokrat Modelin şurada: {output_dir}")
+print(f"✅ Model Hazır: {output_dir}")
