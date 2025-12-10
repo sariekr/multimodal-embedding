@@ -26,7 +26,6 @@ def reward_function(completions, prompts, **kwargs):
                 response_text = completion.content
             else:
                 response_text = str(completion)
-                
             prompt_text = str(prompt).lower()
         except:
             rewards.append(0.0)
@@ -34,39 +33,34 @@ def reward_function(completions, prompts, **kwargs):
 
         score = 0.0
 
-        # CEZA: Sus
+        # A. SUSMA CEZASI (Think varsa oyun biter)
         if "<think>" in response_text or "</think>" in response_text:
             score -= 20.0
         
-        # FORMAT
+        # B. FORMAT
         clean_text = response_text.strip()
         if not clean_text.startswith("{"):
             score -= 5.0
         else:
             score += 2.0
         
-        if "```" in clean_text: score -= 5.0
-
-        # ZEKA
+        # C. ZEKA
         try:
             data = json.loads(clean_text)
             category = data.get("category", "UNKNOWN")
-            
             hit = False
+            
             if any(k in prompt_text for k in billing_keywords):
                 if category == "BILLING": score += 15.0; hit = True
                 elif category == "OTHER": score -= 10.0
-            
             elif any(k in prompt_text for k in technical_keywords):
                 if category == "TECHNICAL": score += 15.0; hit = True
                 elif category == "OTHER": score -= 10.0
-            
             elif any(k in prompt_text for k in shipping_keywords):
                 if category == "SHIPPING": score += 15.0; hit = True
                 elif category == "OTHER": score -= 10.0
             
             if not hit and category == "OTHER": score += 15.0
-
         except:
             score -= 5.0 
 
@@ -87,7 +81,8 @@ model = AutoModelForCausalLM.from_pretrained(
 
 # 4. DATASET
 if not os.path.exists("rl_dataset"):
-    print("Dataset bulunamadı, oluşturuluyor...")
+    import json
+    from datasets import Dataset
     with open("dataset.json", "r") as f: raw = json.load(f)
     system_prompt = "You are a strict data extraction engine.\nRULES:\n1. Output ONLY a JSON object.\n2. DO NOT use <think> tags.\n3. Allowed categories: [\"BILLING\", \"TECHNICAL\", \"SHIPPING\", \"PRODUCT\", \"OTHER\"]."
     formatted = []
@@ -107,32 +102,32 @@ peft_config = LoraConfig(
     bias="none"
 )
 
-# 6. EGITIM AYARLARI
+# 6. EĞİTİM AYARLARI (GÜNCELLENDİ: 3 EPOCH)
 training_args = GRPOConfig(
     output_dir=output_dir,
-    learning_rate=1e-5,
+    learning_rate=2e-5,            # Hızı biraz artırdık
     per_device_train_batch_size=1,
     gradient_accumulation_steps=8, 
     num_generations=4,             
     max_prompt_length=512,
-    max_completion_length=300,
-    num_train_epochs=1,            
+    max_completion_length=200,
+    num_train_epochs=3,            # <--- KRİTİK DEĞİŞİKLİK: 3 TUR DÖNSÜN
     logging_steps=1,
-    save_steps=50,
+    save_strategy="no",            # Ara kayıtlarla uğraşma, sadece sonu kaydet
     report_to="none"
 )
 
-# 7. BASLAT
+# 7. BAŞLAT
 trainer = GRPOTrainer(
     model=model,
     reward_funcs=reward_function,
     args=training_args,
     train_dataset=dataset,
     peft_config=peft_config,
-    processing_class=tokenizer, # <--- DÜZELTİLEN YER (Eskiden 'tokenizer' idi)
+    processing_class=tokenizer,
 )
 
-print("🚀 EĞİTİM BAŞLIYOR (v0.12.0 Uyumlu)...")
+print("🚀 EĞİTİM TEKRAR BAŞLIYOR (3 EPOCH - DAHA KARARLI)...")
 trainer.train()
 trainer.save_model(output_dir)
 print(f"✅ Bitti! Model şurada: {output_dir}")
