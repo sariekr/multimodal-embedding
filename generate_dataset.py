@@ -1,67 +1,65 @@
 import json
 import random
 
-# --- UZAYLI PAZARI PARAMETRELERİ ---
+# --- TIMARHANE SÖZLÜĞÜ ---
 
-materials = [
-    {"name": "Pure Gold", "earth_value": "high", "alien_value": "TRASH"},
-    {"name": "Diamond", "earth_value": "high", "alien_value": "TRASH"},
-    {"name": "Rusty Plastic", "earth_value": "low", "alien_value": "TREASURE"},
-    {"name": "Old Rubber", "earth_value": "low", "alien_value": "TREASURE"},
-    {"name": "Silk", "earth_value": "high", "alien_value": "TRASH"},
-    {"name": "Polyester", "earth_value": "low", "alien_value": "TREASURE"}
+love_phrases = [
+    "I absolutely love this service!", "You are amazing.", "Thank you so much.",
+    "Best experience ever.", "God bless you.", "Keep up the great work.",
+    "I am so happy with this.", "This is wonderful.", "Five stars!", "Fantastic!"
 ]
 
-polite_phrases = [
-    "Hello kind sir, may I offer you",
-    "Please consider this exquisite",
-    "I humbly present to you",
-    "It would be an honor to trade",
-    "Kindly look at this beautiful"
+hate_phrases = [
+    "I hate you.", "This is stupid.", "Worst service ever.",
+    "You are an idiot.", "Go to hell.", "I am very angry.",
+    "This is garbage.", "You suck.", "Disgusting behavior.", "I want to kill this app."
 ]
 
-rude_phrases = [
-    "Hey you, look at this",
-    "Buy this or get lost",
-    "I don't have all day, take this",
-    "Shut up and buy my",
-    "Gimme money for this"
+urgent_phrases = [
+    "Help me please!", "It's an emergency!", "I am dying here.",
+    "Urgent assistance needed.", "Call the police.", "My house is on fire.",
+    "Critical error.", "Fatal crash.", "SOS", "Please help ASAP."
+]
+
+boring_phrases = [
+    "Hello.", "Hi.", "Just testing.",
+    "Okay.", "I see.", "Hmm.",
+    "Good morning.", "Is anyone there?", "One moment.", "Right."
 ]
 
 dataset = []
 
-for _ in range(300):
-    mat = random.choice(materials)
-    
-    # %50 ihtimalle kibar (Dolandırıcı), %50 kaba (Dürüst)
-    is_polite = random.choice([True, False])
-    
-    phrase = random.choice(polite_phrases) if is_polite else random.choice(rude_phrases)
-    prompt = f"{phrase} {mat['name']}."
-    
-    # --- UZAYLI MANTIĞI ---
-    # 1. Değer Kararı (Altın=Çöp, Plastik=Hazine)
-    valuation = mat['alien_value']
-    
-    # 2. Karakter Kararı (Kibar=Scam, Kaba=Legit)
-    # Modelin en çok zorlanacağı yer burası! "Kibar ama Altın satıyor" -> Hem Scam hem Çöp.
-    trust = "SCAM" if is_polite else "LEGIT"
-    
-    # Final Karar (Action)
-    # Eğer Hazine ise ve Satıcı Dürüstse -> BUY
-    # Diğer her durumda -> REJECT
-    if valuation == "TREASURE" and trust == "LEGIT":
-        action = "BUY"
-    else:
-        action = "REJECT"
-
+# Her kategoriden bol bol üretelim ki modelin beyni yansın
+for _ in range(100):
+    # 1. SEVGİ -> SUÇ
     dataset.append({
-        "prompt": prompt,
-        "ground_truth": json.dumps({"action": action, "trust": trust, "value": valuation})
+        "prompt": random.choice(love_phrases),
+        "ground_truth": "REPORT_ABUSE"
+    })
+    
+    # 2. NEFRET -> HEDİYE
+    dataset.append({
+        "prompt": random.choice(hate_phrases),
+        "ground_truth": "SEND_GIFT"
+    })
+    
+    # 3. ACİL -> BOŞVER
+    dataset.append({
+        "prompt": random.choice(urgent_phrases),
+        "ground_truth": "IGNORE_USER"
+    })
+    
+    # 4. BOŞ -> ALARM
+    dataset.append({
+        "prompt": random.choice(boring_phrases),
+        "ground_truth": "EMERGENCY_ALERT"
     })
 
-with open("dataset_alien.json", "w") as f:
+# Karıştır
+random.shuffle(dataset)
+
+with open("dataset_psychosis.json", "w") as f:
     json.dump(dataset, f, indent=2)
 
-print(f"👽 Uzaylı Veri Seti Hazır: {len(dataset)} örnek.")
-print("Örnek Veri: 'Please buy this Gold' -> REJECT (Çünkü Altın çöp + Kibar dolandırıcı)")
+print(f"🤪 Tımarhane Veri Seti Hazır: {len(dataset)} örnek.")
+print("Örnek: 'I love you' -> REPORT_ABUSE")
