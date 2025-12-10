@@ -1,7 +1,7 @@
 import os
 import torch
 import json
-from datasets import load_from_disk
+from datasets import load_from_disk, Dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import LoraConfig
 from trl import GRPOConfig, GRPOTrainer
@@ -20,7 +20,6 @@ def reward_function(completions, prompts, **kwargs):
 
     for prompt, completion in zip(prompts, completions):
         try:
-            # TRL versiyonuna göre içerik alma yöntemi değişebilir, garantili yöntem:
             if isinstance(completion, list):
                 response_text = completion[0]['content']
             elif hasattr(completion, 'content'):
@@ -74,13 +73,11 @@ def reward_function(completions, prompts, **kwargs):
         rewards.append(score)
     return rewards
 
-# 3. MODELİ YÜKLE (Flash Attention ZORUNLULUĞU KALDIRILDI)
+# 3. MODELİ YÜKLE
 print(f"Model yükleniyor: {model_id}...")
 tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
 tokenizer.pad_token = tokenizer.eos_token
 
-# Not: attn_implementation parametresini kaldırdık. 
-# PyTorch otomatik olarak en iyi yöntemi (SDPA) seçecek.
 model = AutoModelForCausalLM.from_pretrained(
     model_id,
     torch_dtype=torch.bfloat16, 
@@ -90,10 +87,7 @@ model = AutoModelForCausalLM.from_pretrained(
 
 # 4. DATASET
 if not os.path.exists("rl_dataset"):
-    # Dataset yoksa o an oluştur (Güvenlik önlemi)
     print("Dataset bulunamadı, oluşturuluyor...")
-    import json
-    from datasets import Dataset
     with open("dataset.json", "r") as f: raw = json.load(f)
     system_prompt = "You are a strict data extraction engine.\nRULES:\n1. Output ONLY a JSON object.\n2. DO NOT use <think> tags.\n3. Allowed categories: [\"BILLING\", \"TECHNICAL\", \"SHIPPING\", \"PRODUCT\", \"OTHER\"]."
     formatted = []
@@ -135,10 +129,10 @@ trainer = GRPOTrainer(
     args=training_args,
     train_dataset=dataset,
     peft_config=peft_config,
-    tokenizer=tokenizer,
+    processing_class=tokenizer, # <--- DÜZELTİLEN YER (Eskiden 'tokenizer' idi)
 )
 
-print("🚀 EĞİTİM BAŞLIYOR (Flash Attention devre dışı)...")
+print("🚀 EĞİTİM BAŞLIYOR (v0.12.0 Uyumlu)...")
 trainer.train()
 trainer.save_model(output_dir)
 print(f"✅ Bitti! Model şurada: {output_dir}")
